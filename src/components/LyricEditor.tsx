@@ -11,6 +11,7 @@ import { X, Trash2 } from 'lucide-react'
 import { useWordInteraction } from '../hooks/useWordInteraction'
 import { useBackHandler, BackPriority } from '../hooks/useBackHandler'
 import { useIsWide } from '../hooks/useWideLayout'
+import { countAnchorCalc } from '../panelTransition'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
 import { buildWordList, getRangeText as sliceRangeText } from '../utils/reconcile'
 
@@ -294,6 +295,8 @@ function LyricEditorInner({
   const lastVisibleAnchor = useCallback((): string | null => {
     const el = scrollContainerRef.current
     if (!el) return null
+    // 记一笔次数，给「侧栏过渡参数」那一屏看它在动画期间跑了几回
+    countAnchorCalc()
     const bottom = el.getBoundingClientRect().bottom
     const paragraphs = el.querySelectorAll<HTMLElement>('[data-line-index]')
 

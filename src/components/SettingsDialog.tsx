@@ -7,6 +7,13 @@ import { AGREEMENT_CLAUSES, AGREEMENT_TITLE } from '../agreement'
 import { describeTarget, loadConfig, resolveConfig, type AiConfig } from '../enrich'
 import { useBackHandler, BackPriority } from '../hooks/useBackHandler'
 import { getSafeAreaReport, type SafeAreaReport } from '../safeArea'
+import {
+  FRAME_BUDGET_MS,
+  expectedFrames,
+  getPanelTransitions,
+  judgeSmoothness,
+  type PanelTransitionRecord
+} from '../panelTransition'
 import { CloudTtsPanel } from './CloudTtsPanel'
 import { SyncPanel } from './SyncPanel'
 import {
@@ -408,6 +415,54 @@ function SafeAreaReadout({
   )
 }
 
+/**
+ * 侧栏过渡参数。
+ *
+ * 2026-09-07 用户在平板上报的：长文档里单独开合右侧栏有概率卡顿，
+ * 卡顿还会让「笔记」键抢在侧栏收完之前冒出来。成因有三个候选（重新断行、
+ * 系统栏动画、「最后一个词」的计算），各对一个数，看一眼就知道是哪一路 ——
+ * 和第四十九、五十七、六十七节同一招，先加读数再改。
+ *
+ * 数是 useRightPanelTransition 在开合那一刻量的，这里只摆出来。
+ */
+function PanelTransitionReadout({ records }: { records: PanelTransitionRecord[] }) {
+  return (
+    <div className="space-y-4">
+      <Section title="最近几次开合（最新的在上）">
+        {records.length === 0 ? (
+          <p className="text-sm text-ink-muted">还没有记录。回到正文开合一次笔记栏，再进来看。</p>
+        ) : (
+          <div className="divide-y divide-paper-border">
+            {records.map((r) => (
+              <div key={r.at} className="py-2 space-y-0.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm text-ink">
+                    {r.open ? '打开' : '收起'} · {judgeSmoothness(r)}
+                  </span>
+                  <span className="text-xs text-ink-muted">
+                    {new Date(r.at).toLocaleTimeString('zh-CN', { hour12: false })}
+                  </span>
+                </div>
+                <Row label="实际用时" value={`${r.durationMs.toFixed(0)} ms（${r.endedBy === 'timeout' ? '等到超时' : '等到结束'}）`} />
+                <Row label="画了几帧 / 应有" value={`${r.frames} / ${expectedFrames(r.durationMs)}`} />
+                <Row label="最长一帧" value={`${r.longestFrameMs.toFixed(1)} ms`} />
+                <Row label="系统栏调用" value={r.systemBarCalls} />
+                <Row label="锚点计算" value={r.anchorCalcs} />
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-ink-muted leading-relaxed pt-1">
+          过渡应为 200 ms，一帧预算 {FRAME_BUDGET_MS.toFixed(1)} ms。
+          帧数远少于应有、或有一帧特别长，是正文重新断行拖的；
+          系统栏调用不为 0，是安卓的系统栏动画插了进来；
+          锚点计算不为 0，是笔记栏跟随在动画期间也在算。
+        </p>
+      </Section>
+    </div>
+  )
+}
+
 /** 一排等宽的单选按钮。字体和纸色长得一样，所以收成一个 */
 function Choices<T extends string>({
   value,
@@ -485,7 +540,16 @@ function AccentChoices({
  * 现在只有一个 sub 状态。往 SubScreen 里加一个成员，编译器会在
  * SUB_TITLE 和下面那串渲染分支上把该改的地方一处处指出来 —— 不靠记性。
  */
-type SubScreen = 'ai' | 'cloudTts' | 'sync' | 'agreement' | 'guide' | 'syncSize' | 'speechDev' | 'dev'
+type SubScreen =
+  | 'ai'
+  | 'cloudTts'
+  | 'sync'
+  | 'agreement'
+  | 'guide'
+  | 'syncSize'
+  | 'speechDev'
+  | 'dev'
+  | 'panelDev'
 
 /** 每块子屏顶栏写什么。Record 是完整的，少一屏编译不过 */
 const SUB_TITLE: Record<SubScreen, string> = {
@@ -496,7 +560,8 @@ const SUB_TITLE: Record<SubScreen, string> = {
   guide: '使用说明',
   syncSize: '同步数据',
   speechDev: '朗读引擎参数',
-  dev: '开发者'
+  dev: '开发者',
+  panelDev: '侧栏过渡参数'
 }
 
 export function SettingsDialog({
@@ -540,6 +605,8 @@ export function SettingsDialog({
   /** 本月实际用掉的流量。真账，进那一屏时读一次 */
   const [syncUsage, setSyncUsage] = useState<SyncUsage | null>(null)
   const [syncConfig, setSyncConfig] = useState<SyncConfig>(loadSyncConfig)
+  /** 侧栏开合的读数。进那一屏时读一次 —— 每开合一次就多一条 */
+  const [panelRecords, setPanelRecords] = useState<PanelTransitionRecord[]>([])
 
   useEffect(() => {
     if (open) {
@@ -586,6 +653,12 @@ export function SettingsDialog({
     setSyncUsage(loadUsage())
     setSub('syncSize')
     void getAppData().then((d) => setSyncSize(measureSyncData(d)))
+  }
+
+  /** 进「侧栏过渡参数」那一屏时读一次最近的记录 */
+  const openPanelDev = () => {
+    setPanelRecords(getPanelTransitions())
+    setSub('panelDev')
   }
 
   /** 进「朗读引擎参数」那一屏时现问一次引擎 —— 装了新的语音包之后这些数会变 */
@@ -763,6 +836,8 @@ export function SettingsDialog({
             />
           ) : sub === 'dev' ? (
             <SafeAreaReadout info={insetInfo} />
+          ) : sub === 'panelDev' ? (
+            <PanelTransitionReadout records={panelRecords} />
           ) : (
             <>
               <Section title="上手">
@@ -1000,6 +1075,19 @@ export function SettingsDialog({
                     <span className="block text-sm text-ink">朗读引擎参数</span>
                     <span className="block text-xs text-ink-muted">
                       朗读引擎能不能念英文，可当场试读
+                    </span>
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-ink-muted shrink-0" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => enterSub(openPanelDev)}
+                  className="w-full flex items-center gap-2 text-left"
+                >
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm text-ink">侧栏过渡参数</span>
+                    <span className="block text-xs text-ink-muted">
+                      开合笔记栏那 200 毫秒画了几帧、卡在哪
                     </span>
                   </span>
                   <ChevronRight className="w-4 h-4 text-ink-muted shrink-0" />
