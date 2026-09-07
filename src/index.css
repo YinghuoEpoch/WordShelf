@@ -292,6 +292,17 @@ body {
   background-position: left bottom;
 }
 
+/*
+  根节点的裁剪。clip 和 hidden 都裁，区别是 hidden 仍是可编程滚动的容器：
+  右侧栏收着时内容在屏幕右边外面（见 useRightPanelTransition），侧栏跟随那句
+  scrollIntoView 会把 hidden 的根节点横着滚过去露出它。clip 不会。
+  先写 hidden 再写 clip：老 WebView 不认 clip 时退回 hidden，至少还裁得住。
+*/
+.app-root-clip {
+  overflow: hidden;
+  overflow: clip;
+}
+
 /* 三栏独立滚动：细长灰色滚动条 */
 .scroll-area {
   overflow-y: auto;

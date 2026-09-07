@@ -976,6 +976,8 @@ function LyricEditorInner({
         }}
       >
       <div
+        // 这个标记给 useRightPanelTransition 用：开合侧栏时用位移把这一块平滑送到新位置
+        data-reader-prose
         className={`font-normal p-8 max-w-prose mx-auto antialiased ${themeStyles.text}`}
         style={{
           fontSize: readerSettings.fontSize,

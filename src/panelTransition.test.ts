@@ -7,6 +7,7 @@ import {
   expectedFrames,
   getPanelTransitions,
   judgeSmoothness,
+  proseLeftFor,
   recordPanelTransition,
   resetPanelTransitions,
   snapshotCounters,
@@ -26,7 +27,7 @@ const 一条 = (over: Partial<PanelTransitionRecord> = {}): PanelTransitionRecor
   longestFrameMs: 17,
   systemBarCalls: 0,
   anchorCalcs: 0,
-  endedBy: 'transitionend',
+  endedBy: 'animationend',
   at: 0,
   ...over
 })
@@ -91,5 +92,20 @@ describe('计数器', () => {
     const before = snapshotCounters()
     countSystemBarCall()
     expect(before.systemBars).toBe(0)
+  })
+})
+
+describe('proseLeftFor', () => {
+  it('容器比最大宽宽：剩下的空间左右平分', () => {
+    // 第七十七节的数：最大宽 738（65ch，含 64 内边距），容器 1030
+    expect(proseLeftFor(1030, 738)).toBe((1030 - 738) / 2)
+  })
+  it('容器比最大宽窄：贴左边，左边距 0', () => {
+    expect(proseLeftFor(680, 738)).toBe(0)
+  })
+  it('开合前后的差就是正文要滑的距离', () => {
+    const before = proseLeftFor(1030, 738)
+    const after = proseLeftFor(1030 - 350, 738)
+    expect(before - after).toBe(146)
   })
 })
