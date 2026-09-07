@@ -35,6 +35,7 @@ import { AGREEMENT_CLAUSES, AGREEMENT_TITLE } from './agreement'
 import { useBackHandler, handleBackPress, BackPriority } from './hooks/useBackHandler'
 import { isLeftSidebarVisible, useIsWide } from './hooks/useWideLayout'
 import { shouldImmerse, useImmersiveReading } from './hooks/useImmersiveReading'
+import { useRightPanelTransition } from './hooks/useRightPanelTransition'
 import { usePanelWidth } from './hooks/usePanelWidth'
 import { useLastReadByBook } from './hooks/useLastReadByBook'
 import { useSync } from './hooks/useSync'
@@ -1252,6 +1253,11 @@ export default function App() {
   const isWide = useIsWide()
   const showLeft = activePanel === 'left'
   const showRight = activePanel === 'right'
+  /**
+   * 右侧栏的宽度过渡此刻到位了没有（宽屏才量）。
+   * 「笔记」键只在到位之后才露出来，缘由见那颗键上的注释和 useRightPanelTransition。
+   */
+  const rightPanel = useRightPanelTransition(showRight, isWide)
   /*
     左栏此刻看不看得见。**宽窄两套收起机制合成的那一个答案** ——
     宽屏点汉堡改的是 wideLeftHidden，窄屏改的是 activePanel（见下面那颗键）。
@@ -1596,8 +1602,14 @@ export default function App() {
 
               **不能写成 `{!showRight && ...}`** —— 那样状态一翻转它就立刻冒出来，
               而侧栏还要滑 200ms 才走完，看着像它抢在前面跳出来。用户报的就是这个。
-              改成一直挂着、用透明度收放：出现时**等 200ms**（侧栏滑完）再淡入，
-              消失时不等，立刻让位给正在滑进来的侧栏。
+              改成一直挂着、用透明度收放，消失时不等，立刻让位给正在滑进来的侧栏。
+
+              出现的时机**听侧栏的 transitionend**（rightPanel.settled），不再靠 `delay-200`。
+              从前那 200ms 是墙钟，长文档里开合掉帧后画出来的侧栏落后于墙钟，
+              键就又抢在前面了（2026-09-07 用户在平板上报的）；而且收右栏时两栏都收起
+              就进沉浸，那时它走「跟着顶栏出没、不等」那条分支，根本没等。
+              现在侧栏到位了它才淡入，卡不卡都对。沉浸态里点空白叫顶栏时侧栏没动，
+              settled 本来就是 true，它照旧跟着顶栏一起出没。
             */}
             <button
               type="button"
@@ -1605,15 +1617,15 @@ export default function App() {
                 setActivePanel('right')
               }}
               className={`hidden wide:flex fixed right-4 top-1/2 -translate-y-1/2 z-10 items-center gap-2 px-3 py-2 rounded-full border border-paper-border bg-white shadow-md hover:bg-accent-50 hover:border-accent-300 text-ink-muted hover:text-accent-800 transition-opacity ${
-                showRight || chromeHidden
+                showRight || chromeHidden || !rightPanel.settled
                   ? 'opacity-0 pointer-events-none duration-100'
                   : immersive
-                    ? // 沉浸态里它跟着顶栏一起出没，不用等 —— 那 200ms 等的是侧栏
+                    ? // 沉浸态里和顶栏同一个节奏淡入
                       'opacity-100 duration-200'
-                    : 'opacity-100 duration-150 delay-200'
+                    : 'opacity-100 duration-150'
               }`}
               title="打开笔记"
-              aria-hidden={showRight || chromeHidden}
+              aria-hidden={showRight || chromeHidden || !rightPanel.settled}
             >
               <BookOpen className="w-4 h-4" />
               <span className="text-sm font-medium">笔记</span>
@@ -1678,6 +1690,7 @@ export default function App() {
           <div
             className="h-full shrink-0 overflow-hidden wide:transition-[width] wide:duration-200 wide:ease-out"
             style={isWide ? { width: showRight ? right.width : 0 } : undefined}
+            onTransitionEnd={rightPanel.onTransitionEnd}
           >
             {/* 里层锁住完整宽度，外面变窄时内容不跟着压扁，而是被裁掉 */}
             <div

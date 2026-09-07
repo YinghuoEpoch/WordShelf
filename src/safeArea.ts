@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin } from '@capacitor/core'
+import { countSystemBarCall } from './panelTransition'
 
 /**
  * 系统栏安全区：四条边各要让出多少。
@@ -64,6 +65,8 @@ const SafeArea = registerPlugin<{
  * 失败了就当没发生：藏不藏系统栏不影响读书，为它弹个错误提示反而碍事。
  */
 export async function setSystemBarsHidden(hidden: boolean): Promise<void> {
+  // 只记次数，不改行为：「侧栏过渡参数」那一屏要看动画期间它被调了几回
+  countSystemBarCall()
   if (!Capacitor.isNativePlatform()) return
   try {
     await SafeArea.setImmersive({ on: hidden })
