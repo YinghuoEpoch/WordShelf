@@ -1,5 +1,6 @@
 import { cacheKey, cachedKeySet, putCached } from './audioCache'
-import { AMERICAN, dictFetchUrl, isLookupWorthy, normalizeWord } from './dictAudio'
+import { dictFetchUrl, isLookupWorthy, normalizeWord } from './dictAudio'
+import { accentType, getSpeechPrefs } from './prefs'
 import { fetchAudioBytes } from './fetchAudio'
 
 /**
@@ -22,7 +23,8 @@ export async function prefetchWords(
   words: readonly string[],
   options: { type?: number; stopped?: () => boolean; limit?: number } = {}
 ): Promise<{ 取了: number; 跳过: number; 失败: number }> {
-  const type = options.type ?? AMERICAN
+  // 不给就按设置里的口音备（和播放那边一致，备错口音等于白备）
+  const type = options.type ?? accentType(getSpeechPrefs().accent)
   const stopped = options.stopped ?? (() => false)
   const have = await cachedKeySet()
   const stat = { 取了: 0, 跳过: 0, 失败: 0 }

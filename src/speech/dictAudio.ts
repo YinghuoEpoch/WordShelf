@@ -95,7 +95,12 @@ export async function prefetchWord(word: string, type: number = AMERICAN): Promi
   }
 }
 
-export function createDictPlayer(type: number = AMERICAN): DictPlayer {
+/**
+ * @param typeOf 英音还是美音。可以给一个函数 —— **每次播放时才问**，
+ *               于是设置里一切换，下一个词就是新口音，不用重建朗读器（朗读器在 useSpeak 里是 useMemo 一次的）
+ */
+export function createDictPlayer(typeOf: number | (() => number) = AMERICAN): DictPlayer {
+  const typeNow = () => (typeof typeOf === 'function' ? typeOf() : typeOf)
   /** 当前这次播放的收尾函数；换一个词或者被叫停时用它把上一次结束掉 */
   let finishCurrent: ((cancelled: boolean) => void) | null = null
   /**
@@ -151,6 +156,7 @@ export function createDictPlayer(type: number = AMERICAN): DictPlayer {
     async play(word) {
       const mine = ++generation
       finishCurrent?.(true)
+      const type = typeNow()
       const key = cacheKey(normalizeWord(word), type)
       /** 等回来发现已经被顶掉了：当作正常结束，别播、也别让上层退回系统朗读 */
       const superseded = () => generation !== mine

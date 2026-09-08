@@ -10,6 +10,11 @@ interface WordInteractionOptions {
   onLongPress: (anchorId: string, word: string) => void
   /** 当前已有选中时，轻点某个词：连词成句 / 修正范围 / 取消选中 */
   onTapWithSelection: (anchorId: string, word: string) => void
+  /**
+   * 当前没有选中时，轻点某个词。不给就没反应（从前一直如此，避免正常阅读时误触）。
+   * 设置里「点按单词发音」开了才给 —— 念一遍，不选中
+   */
+  onTap?: (anchorId: string, word: string) => void
   /** 当前是否已有选中 */
   hasSelection: boolean
   longPressMs?: number
@@ -46,6 +51,7 @@ interface WordInteractionResult {
 export function useWordInteraction({
   onLongPress,
   onTapWithSelection,
+  onTap,
   hasSelection,
   longPressMs = LONG_PRESS_MS
 }: WordInteractionOptions): WordInteractionResult {
@@ -100,9 +106,10 @@ export function useWordInteraction({
         firedRef.current = false
         // 长按已经处理过了，松手不再重复触发
         if (wasLongPress) return
-        // 轻点只在「已经有选中」时有意义：用来连词成句或修正范围。
-        // 没有选中时的轻点保持无反应，避免正常阅读时误触。
+        // 有选中时轻点：连词成句或修正范围。
+        // 没有选中时轻点：默认无反应（避免正常阅读时误触）；开了「点按单词发音」才念一遍
         if (hasSelection) onTapWithSelection(anchorId, word)
+        else onTap?.(anchorId, word)
       },
 
       onPointerCancel: cancelPress,
@@ -110,12 +117,14 @@ export function useWordInteraction({
       // 长按时浏览器默认会弹出「复制 / 选择」菜单，这里挡掉
       onContextMenu: (e: React.SyntheticEvent) => e.preventDefault()
     }),
-    [hasSelection, longPressMs, onLongPress, onTapWithSelection, cancelPress]
+    [hasSelection, longPressMs, onLongPress, onTapWithSelection, onTap, cancelPress]
   )
 
   const interactionHint = hasSelection
     ? '轻点其它单词可连成句子'
-    : '阅读模式 · 长按单词添加笔记'
+    : onTap
+      ? '阅读模式 · 长按加笔记，点按发音'
+      : '阅读模式 · 长按单词添加笔记'
 
   return { getWordHandlers, pressingAnchorId, interactionHint }
 }
