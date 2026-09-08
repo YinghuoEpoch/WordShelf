@@ -60,7 +60,12 @@ export function useWordInteraction({
   /** 本次按压是否已经触发过长按（触发过就不再当作轻点处理） */
   const firedRef = useRef(false)
   const [pressingAnchorId, setPressingAnchorId] = useState<string | null>(null)
-
+  /**
+   * 松手 / 滑走 / 取消都走这一条：底色立刻灭。
+   *
+   * 松手那一下的可见度靠 LyricEditor 那边「灭的时候才带 150ms 淡出」（亮是瞬时的）——
+   * 试过松手后再留 160ms 才灭，用户 2026-09-09 说「留的时间太久了」，去掉了。
+   */
   const cancelPress = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current)
@@ -80,7 +85,10 @@ export function useWordInteraction({
         if (e.button !== 0) return
         firedRef.current = false
         startPosRef.current = { x: e.clientX, y: e.clientY }
-        setPressingAnchorId(anchorId)
+        // 按压的深色只给「还没选中任何词」时的那一下。已经有选区之后再点别的词是在连词成句 /
+        // 改范围，范围自己有浅底色，不再叠一层深的（用户 2026-09-09：「第二个单词不需要这个待遇」）。
+        // 从前它一直在，只是被 150ms 过渡拖成半透明看不出来；第九十节把亮改成瞬时之后就露出来了
+        if (!hasSelection) setPressingAnchorId(anchorId)
 
         if (timerRef.current) clearTimeout(timerRef.current)
         timerRef.current = setTimeout(() => {
