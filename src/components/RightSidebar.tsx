@@ -10,6 +10,7 @@ import { EditedMark } from './EditedMark'
 import { BAND_TOP, BAND_SUB } from './chrome'
 import { findFollowIndex } from '../utils/followScroll'
 import { ScrollEaser, centerTarget } from '../utils/scrollEase'
+import { StepCursor } from '../utils/stepCursor'
 
 /**
  * 从侧栏点一条笔记跳到正文之后，**这么久之内不跟随**。
@@ -395,8 +396,10 @@ function RightSidebarInner({
   /**
    * 跟着正文滚。
    *
-   * 「跟到哪一条」是算出来的（findFollowIndex，有测试钉着）；
-   * 「怎么滚过去」：把那张卡摆到列表正中（centerTarget 算目标，有测试钉着），
+   * 「该到哪一条」是算出来的（findFollowIndex，有测试钉着）；
+   * 「竖线怎么过去」：一格一格走，不跳（StepCursor，有测试钉着）—— 好几条笔记挤在一起时
+   * 一次上报能越过好几条，竖线直接跳过去中间那几条就没亮过，用户 2026-09-08 提的；
+   * 「列表怎么滚过去」：把竖线那张卡摆到列表正中（centerTarget），
    * 用 ScrollEaser 按帧缓动追过去 —— 目标随时能换、不重启，缘由见 utils/scrollEase.ts。
    * 打开这一栏、切标签、换文档这三种「重新对一次」瞬时到位，不做动画。
    */
@@ -440,8 +443,16 @@ function RightSidebarInner({
    * 这个覆盖一直留到**正文动了**为止（那时才有新的阅读位置可言）。
    */
   const [focusOverride, setFocusOverride] = useState<number | null>(null)
+  /**
+   * 竖线**显示中**的那条 —— 一格一格追着 followIndex 走的，正文划过去了它可能还在追。
+   * -1 是还没对过位（刚挂上来）。列表变短了就夹到末尾。
+   */
+  const [shown, setShown] = useState(-1)
+  const cursorRef = useRef<StepCursor | null>(null)
+  if (!cursorRef.current) cursorRef.current = new StepCursor(setShown)
+  const shownClamped = shown < 0 ? followIndex : Math.min(shown, anchors.length - 1)
   /** 竖线画在谁身上 */
-  const markedIndex = focusOverride ?? followIndex
+  const markedIndex = focusOverride ?? shownClamped
 
   /**
    * 这几件事一律解除暂停，因为它们都意味着「重新对一次」：
@@ -464,16 +475,42 @@ function RightSidebarInner({
 
   useEffect(() => {
     if (!open) return
-    let index = followIndex
-    // 刚亲手划完一条：跟到它身上，而且盖过暂停
-    if (savedNoteFocus && savedNoteFocus.at !== handledFocusRef.current) {
-      handledFocusRef.current = savedNoteFocus.at
-      if (focusIndex >= 0) {
-        pausedRef.current = false
-        index = focusIndex
-        setFocusOverride(focusIndex)
-      }
-    } else if (pausedRef.current) return
+    const cursor = cursorRef.current!
+    const key = `${tab}|${currentPageId}`
+    const settle = settleRef.current
+    if (settle.key !== key) {
+      settle.key = key
+      settle.anchorAtStart = lastVisibleAnchor
+      settle.settled = false
+    }
+
+    const freshSave = !!savedNoteFocus && savedNoteFocus.at !== handledFocusRef.current
+    if (freshSave) handledFocusRef.current = savedNoteFocus.at
+    /** 列表该把哪一条摆到正中 */
+    let index: number
+    /** 瞬时到位还是缓动过去 */
+    let instant = false
+    if (freshSave && focusIndex >= 0) {
+      // 刚亲手划完一条：竖线和列表都跟到它身上，而且盖过暂停
+      pausedRef.current = false
+      setFocusOverride(focusIndex)
+      cursor.jump(focusIndex)
+      index = focusIndex
+    } else if (focusOverride !== null) {
+      // 钉在刚划完 / 刚点过那条上（pinForJump 已经把竖线跳过去了）
+      index = focusOverride
+    } else if (!settle.settled) {
+      // 新的一屏：竖线和列表都瞬时到位。锚点变过一次之后才算对好了，往后是正文在滚
+      cursor.jump(followIndex)
+      index = followIndex
+      instant = true
+      if (lastVisibleAnchor !== settle.anchorAtStart) settle.settled = true
+    } else {
+      // 正文在滚：竖线一格一格追 followIndex，列表跟着竖线
+      cursor.setTarget(followIndex)
+      index = shownClamped
+    }
+    if (pausedRef.current) return
     if (index < 0) return
     /*
       摆在侧栏正中间（用户 2026-09-04 改的口径，原先是「看不见才滚」）。
@@ -493,31 +530,39 @@ function RightSidebarInner({
       cont.clientHeight,
       cont.scrollHeight
     )
-    const key = `${tab}|${currentPageId}`
-    const settle = settleRef.current
-    if (settle.key !== key) {
-      settle.key = key
-      settle.anchorAtStart = lastVisibleAnchor
-      settle.settled = false
-    }
-    if (!settle.settled) {
-      // 新的一屏：瞬时到位。锚点变过一次之后才算对好了，往后是正文在滚
+    if (instant) {
       easerRef.current.cancel()
       cont.scrollTop = target
-      if (lastVisibleAnchor !== settle.anchorAtStart) settle.settled = true
     } else {
       easerRef.current.to(cont, target)
     }
-  }, [open, tab, currentPageId, lastVisibleAnchor, followIndex, focusIndex, savedNoteFocus])
+  }, [
+    open,
+    tab,
+    currentPageId,
+    lastVisibleAnchor,
+    followIndex,
+    focusIndex,
+    focusOverride,
+    savedNoteFocus,
+    shownClamped
+  ])
 
   // 收起来就停：下次打开是新的一屏，瞬时到位
   useEffect(() => {
     if (!open) {
       easerRef.current.cancel()
+      cursorRef.current?.cancel()
       settleRef.current.key = ''
     }
   }, [open])
-  useEffect(() => () => easerRef.current.cancel(), [])
+  useEffect(
+    () => () => {
+      easerRef.current.cancel()
+      cursorRef.current?.cancel()
+    },
+    []
+  )
 
   /** 用手碰了侧栏就先别跟。听指针动作而不是 scroll 事件 —— 后者分不清是谁滚的 */
   const pauseFollow = () => {
@@ -536,6 +581,7 @@ function RightSidebarInner({
   const pinForJump = (index: number) => {
     pausedRef.current = true
     easerRef.current.cancel()
+    cursorRef.current?.jump(index)
     pinUntilRef.current = Date.now() + JUMP_PIN_MS
     setFocusOverride(index)
   }
