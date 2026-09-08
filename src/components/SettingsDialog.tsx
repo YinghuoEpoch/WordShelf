@@ -448,6 +448,10 @@ function PanelTransitionReadout({ records }: { records: PanelTransitionRecord[] 
                 <Row label="最长一帧" value={`${r.longestFrameMs.toFixed(1)} ms`} />
                 <Row label="系统栏调用" value={r.systemBarCalls} />
                 <Row label="锚点计算" value={r.anchorCalcs} />
+                <Row
+                  label="正文落点偏差"
+                  value={r.landingErrorPx === undefined ? '—（没有正文）' : `${r.landingErrorPx.toFixed(1)} px`}
+                />
               </div>
             ))}
           </div>
@@ -457,6 +461,7 @@ function PanelTransitionReadout({ records }: { records: PanelTransitionRecord[] 
           帧数远少于应有、或有一帧特别长，是正文重新断行拖的；
           系统栏调用不为 0，是安卓的系统栏动画插了进来；
           锚点计算不为 0，是笔记栏跟随在动画期间也在算。
+          正文落点偏差是「动画把正文送到的位置」和「重排后正文实际位置」的差，理想是 0。
         </p>
       </Section>
     </div>

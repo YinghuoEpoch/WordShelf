@@ -30,8 +30,14 @@ export interface PanelTransitionRecord {
   systemBarCalls: number
   /** 期间「屏幕上最后一个词」算了几次 */
   anchorCalcs: number
-  /** 怎么结束的：等到了 transitionend，还是兜底超时 */
-  endedBy: 'transitionend' | 'timeout'
+  /** 怎么结束的：等到了动画结束，还是兜底超时 */
+  endedBy: 'animationend' | 'timeout'
+  /**
+   * 正文落点的公式和实测差了几像素（实测 − 公式）。
+   * 开合时正文用位移平滑滑到「重排之后会在的位置」，那个位置是算出来的（proseLeftFor），
+   * 这一格就是验算：不为 0 说明公式漏了什么（滚动条？内边距？）。没找到正文时不记。
+   */
+  landingErrorPx?: number
   /** 什么时候（Date.now()） */
   at: number
 }
@@ -116,4 +122,19 @@ export function summarizeFrames(startAt: number, frameTimes: number[]): { frames
     prev = t
   }
   return { frames: frameTimes.length, longestFrameMs: longest }
+}
+
+/**
+ * 正文块在阅读容器里的左边距（像素）。
+ *
+ * 正文是 `max-w-prose mx-auto`、`box-sizing: border-box`：块宽 = min(最大宽, 容器宽)，
+ * 剩下的空间左右平分。开合侧栏时容器宽会变 ±侧栏宽，这个式子算出变完之后正文在哪，
+ * 动画期间用位移把它平滑送过去，到位那一刻再真正重排 —— 于是重排只发生一次。
+ *
+ * ⚠️ 不写死任何数：最大宽从 getComputedStyle 读（65ch 折成像素），容器宽当场量。
+ * 第七十七节里写死 616 被用户当场指出来过。
+ */
+export function proseLeftFor(containerWidth: number, maxWidth: number): number {
+  const block = Math.min(maxWidth, containerWidth)
+  return Math.max(0, (containerWidth - block) / 2)
 }

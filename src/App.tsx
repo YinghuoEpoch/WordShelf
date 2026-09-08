@@ -1257,7 +1257,7 @@ export default function App() {
    * 右侧栏的宽度过渡此刻到位了没有（宽屏才量）。
    * 「笔记」键只在到位之后才露出来，缘由见那颗键上的注释和 useRightPanelTransition。
    */
-  const rightPanel = useRightPanelTransition(showRight, isWide)
+  const rightPanel = useRightPanelTransition(showRight, isWide, right.width)
   /*
     左栏此刻看不看得见。**宽窄两套收起机制合成的那一个答案** ——
     宽屏点汉堡改的是 wideLeftHidden，窄屏改的是 activePanel（见下面那颗键）。
@@ -1333,7 +1333,10 @@ export default function App() {
 
 
   return (
-    <div className="h-full flex flex-col wide:flex-row bg-paper overflow-hidden">
+    // 根节点用 `overflow: clip` 而不是 `hidden`（app-root-clip）：两者都裁，
+    // 但 hidden 是可编程滚动的容器 —— 右侧栏收着时内容在屏幕右边外面，
+    // 侧栏跟随那句 scrollIntoView 会把整个 app 横着滚过去露出它。clip 不会。
+    <div className="h-full flex flex-col wide:flex-row bg-paper app-root-clip">
       {/* 移动端遮罩：常驻并做透明度过渡，避免呼出侧栏时闪屏；点击同时关闭左/右侧栏 */}
       <div
         className={`fixed inset-0 z-20 wide:hidden bg-black/30 transition-opacity duration-200 ${
@@ -1684,16 +1687,18 @@ export default function App() {
           } wide:translate-x-0`}
         >
           {/*
-            中间这层管两件事：**宽度动画**（推着正文一起平滑变）和**裁剪**。
-            外层不能裁 —— 拖杆在它左边缘外面（-left-2），裁了就没了。
+            中间这层只管**占位**：占位 = 侧栏宽，不占位 = 0，**不做动画、不裁剪**。
+            动画是里层用 transform 滑（useRightPanelTransition），占位只在滑到位 / 刚翻转
+            那一刻切一次 —— 于是正文只重排一次，不再每帧重排（第八十节量出来的根子）。
+            不裁剪是因为滑的时候内容要盖到正文上；收着时内容在屏幕外，靠根节点的 clip 挡。
           */}
           <div
-            className="h-full shrink-0 overflow-hidden wide:transition-[width] wide:duration-200 wide:ease-out"
-            style={isWide ? { width: showRight ? right.width : 0 } : undefined}
-            onTransitionEnd={rightPanel.onTransitionEnd}
+            className="h-full shrink-0"
+            style={isWide ? { width: rightPanel.laidOut ? right.width : 0 } : undefined}
           >
-            {/* 里层锁住完整宽度，外面变窄时内容不跟着压扁，而是被裁掉 */}
+            {/* 里层锁住完整宽度，动画就是动它 */}
             <div
+              ref={rightPanel.panelRef}
               className="h-full flex flex-col"
               style={isWide ? { width: right.width } : undefined}
             >
@@ -1725,9 +1730,10 @@ export default function App() {
             拖杆：正文和笔记栏的交界线。和左栏那根是同一套（usePanelWidth），
             只是杆在这一栏的**左**边缘，所以往左拖才是变宽（invert）。
 
-            只在宽屏、且笔记栏开着时才有 —— 收起来的时候那条边在屏幕外面。
+            只在宽屏、且笔记栏开着**且已占位**时才有 —— 滑进来的那 200ms 里
+            中间层还是 0 宽，杆会贴在屏幕右边缘，不该在那儿。
           */}
-          {showRight && (
+          {showRight && rightPanel.laidOut && (
             <div
               role="separator"
               aria-orientation="vertical"
