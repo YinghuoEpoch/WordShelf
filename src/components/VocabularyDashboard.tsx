@@ -900,7 +900,10 @@ function SentenceCard({
         </>
       ) : (
         <>
-          {item.grammar && showEnglish && (
+          {/* 句型 / 语法是用中文写的讲解，也是答案：隐藏中文时要和翻译一起遮
+              （用户 2026-09-09 报的：翻译遮住了、讲解还亮着）。里面又常带着英文句型，
+              所以隐藏英文时照旧也遮 */}
+          {item.grammar && showEnglish && showChinese && (
             <p className="mt-1 text-sm text-stone-500 font-sans">{item.grammar}</p>
           )}
           {(item.meaning || !showChinese) && (
