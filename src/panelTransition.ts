@@ -38,6 +38,12 @@ export interface PanelTransitionRecord {
    * 这一格就是验算：不为 0 说明公式漏了什么（滚动条？内边距？）。没找到正文时不记。
    */
   landingErrorPx?: number
+  /**
+   * 重排后把屏幕顶端那个词拉回原高度，拉了几像素。
+   * 浏览器的滚动锚定在这一帧被位移的变化关掉了（第七十九节的根子），所以自己拉；
+   * 这一格就是浏览器欠下的那笔。没找到正文或顶端词时不记。
+   */
+  anchorFixPx?: number
   /** 什么时候（Date.now()） */
   at: number
 }

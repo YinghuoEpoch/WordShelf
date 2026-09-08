@@ -14,6 +14,11 @@ export const SETTLE_FALLBACK_MS = 1000
 
 /** 正文块身上的标记。LyricEditor 渲染时挂上，这里靠它找到要滑的那一块 */
 export const PROSE_SELECTOR = '[data-reader-prose]'
+/**
+ * 贴着正文区右边缘的东西（「编辑全文」那颗键）。侧栏盖着正文滑进来时它们会被盖住、
+ * 到位重排后才在新位置冒出来 —— 用户报的「消失又恢复」。让它们和侧栏边缘同步滑。
+ */
+export const SLIDE_SELECTOR = '[data-slide-with-panel]'
 
 export interface RightPanelTransition {
   /**
@@ -50,6 +55,57 @@ interface Run {
   landingErrorPx?: number
   /** 兜底超时先到了就记在这，收尾时照实写进读数 */
   endedBy: 'animationend' | 'timeout'
+  /** 重排前屏幕顶端那个词在哪，重排后照它把滚动位置拉回来。见 reanchor */
+  topWord: TopWord | null
+  /** 拉回了多少像素。浏览器自己锚定成功的话这里是 0 */
+  anchorFixPx?: number
+}
+
+/** 屏幕顶端第一个露着的词：id 和它离容器顶边多远 */
+interface TopWord {
+  id: string
+  top: number
+}
+
+/**
+ * 找屏幕顶端第一个露着的词。两步走（和 LyricEditor.lastVisibleAnchor 同一套）：
+ * 先找第一个下沿还在屏幕里的 <p>，再在它里面找第一个下沿还在屏幕里的词。
+ */
+function topWordIn(container: HTMLElement): TopWord | null {
+  const top = container.getBoundingClientRect().top
+  for (const p of container.querySelectorAll<HTMLElement>('[data-line-index]')) {
+    if (p.getBoundingClientRect().bottom <= top) continue
+    for (const s of p.querySelectorAll<HTMLElement>('[data-word-span]')) {
+      const r = s.getBoundingClientRect()
+      if (r.bottom > top && s.id) return { id: s.id, top: r.top - top }
+    }
+  }
+  return null
+}
+
+/**
+ * 重排之后把顶端那个词拉回原来的高度，返回拉了多少。
+ *
+ * ## 为什么要自己锚（第七十九节的根子，2026-09-08 实验定案）
+ *
+ * 浏览器有滚动锚定：容器变窄、正文重新断行时，它会调 scrollTop 让屏幕顶端那个词不动。
+ * 但**同一帧里锚点的祖先改了 transform，锚定就整个被关掉** —— 实验里同样的重排，
+ * 只改宽度：词纹丝不动；宽度和位移一起改：scrollTop 一动不动、词跑了两万像素。
+ * 而这里的设计恰恰是重排那一帧位移在归零（打开）或起跳（收起）。
+ * 于是自己记、自己拉。读数屏上「锚定补偿」就是拉了多少。
+ */
+function reanchor(container: HTMLElement, word: TopWord | null): number | undefined {
+  if (!word) return undefined
+  const el = document.getElementById(word.id)
+  if (!el) return undefined
+  const delta = el.getBoundingClientRect().top - container.getBoundingClientRect().top - word.top
+  if (Math.abs(delta) > 0.5) container.scrollTop += delta
+  return delta
+}
+
+/** 贴着右边缘、要和侧栏一起滑的那些元素 */
+function edgeRiders(): Element[] {
+  return Array.from(document.querySelectorAll(SLIDE_SELECTOR))
 }
 
 /** 正文块和它的滚动容器。编辑全文、没打开文档时都没有，那就只滑侧栏、不滑正文 */
@@ -97,6 +153,9 @@ function slide(el: Element, fromPx: number, toPx: number): Animation {
  * 两个方向不对称，是因为「先重排」只在收起时不会露馅：打开时先重排会让正文
  * 移到窄容器里、被滚动容器裁掉右边一截，而侧栏还没滑到那儿盖住。
  *
+ * 贴着右边缘的东西（「编辑全文」，SLIDE_SELECTOR）和侧栏同步滑，不然会被盖住再冒出来。
+ * 重排那一帧浏览器的滚动锚定会被位移的变化关掉，所以顶端的词自己记、自己拉回（reanchor）。
+ *
  * ⚠️ 打开的落点是**算**出来的（收起的是量出来的）。读数屏上「落点偏差」就是验算：
  * 到位后实测和公式差几像素。差得多就是公式漏了什么。
  *
@@ -119,6 +178,8 @@ export function useRightPanelTransition(open: boolean, enabled: boolean, width: 
   }, [])
   const phase = useRef<Phase>('idle')
   const runRef = useRef<Run | null>(null)
+  /** 收起：不占位之前记下的顶端词，下一趟 effect 里用 */
+  const pendingTopWord = useRef<TopWord | null>(null)
   const mounted = useRef(false)
 
   /** 一轮结束：记读数，回到 idle */
@@ -131,10 +192,13 @@ export function useRightPanelTransition(open: boolean, enabled: boolean, width: 
     clearTimeout(run.timeout)
     for (const a of run.animations) a.cancel()
     let landingErrorPx = run.landingErrorPx
-    if (run.predictedLeft !== null) {
-      const found = findProse()
-      if (found) landingErrorPx = measuredLeft(found.prose, found.container) - run.predictedLeft
+    let anchorFixPx = run.anchorFixPx
+    const found = findProse()
+    if (run.predictedLeft !== null && found) {
+      landingErrorPx = measuredLeft(found.prose, found.container) - run.predictedLeft
     }
+    // 打开：占位那一帧刚重排完，位移也刚归零 —— 锚定被关了，这里自己拉回来
+    if (run.topWord && found) anchorFixPx = reanchor(found.container, run.topWord)
     const after = snapshotCounters()
     recordPanelTransition({
       open: run.open,
@@ -144,6 +208,7 @@ export function useRightPanelTransition(open: boolean, enabled: boolean, width: 
       anchorCalcs: after.anchorCalcs - run.counters.anchorCalcs,
       endedBy,
       landingErrorPx,
+      anchorFixPx,
       at: Date.now()
     })
     setSettled(true)
@@ -174,7 +239,8 @@ export function useRightPanelTransition(open: boolean, enabled: boolean, width: 
         }, SETTLE_FALLBACK_MS),
         animations: [],
         predictedLeft: null,
-        endedBy: 'animationend'
+        endedBy: 'animationend',
+        topWord: null
       }
       const tick = (t: number) => {
         run.frameTimes.push(t)
@@ -219,8 +285,15 @@ export function useRightPanelTransition(open: boolean, enabled: boolean, width: 
       phase.current = 'opening'
       setSettled(false)
       // 超时也得走「占位」这一步，否则中间层永远 0 宽、侧栏悬在正文上
-      const run = startRun(true, () => setLaidOut(true))
+      const layOut = () => {
+        // 占位之前记下顶端的词 —— 动画这 200ms 里他可能滚过正文，得取最新的
+        const f = findProse()
+        run.topWord = f ? topWordIn(f.container) : null
+        setLaidOut(true)
+      }
+      const run = startRun(true, layOut)
       if (panelEl.current) run.animations.push(slide(panelEl.current, 0, -width))
+      for (const el of edgeRiders()) run.animations.push(slide(el, 0, -width))
       const found = findProse()
       if (found) {
         const { prose, container } = found
@@ -229,7 +302,7 @@ export function useRightPanelTransition(open: boolean, enabled: boolean, width: 
         run.predictedLeft = to
         run.animations.push(slide(prose, 0, to - from))
       }
-      whenDone(run, () => setLaidOut(true))
+      whenDone(run, layOut)
       return
     }
 
@@ -243,6 +316,8 @@ export function useRightPanelTransition(open: boolean, enabled: boolean, width: 
       // 收起，第一步：立刻不占位（这一帧重排）。下一趟 effect 再摆动画
       abort()
       phase.current = 'closingPending'
+      const f = findProse()
+      pendingTopWord.current = f ? topWordIn(f.container) : null
       setSettled(false)
       setLaidOut(false)
       return
@@ -253,6 +328,7 @@ export function useRightPanelTransition(open: boolean, enabled: boolean, width: 
       phase.current = 'closing'
       const run = startRun(false, () => finish('timeout'))
       if (panelEl.current) run.animations.push(slide(panelEl.current, -width, 0))
+      for (const el of edgeRiders()) run.animations.push(slide(el, -width, 0))
       const found = findProse()
       if (found) {
         const { prose, container } = found
@@ -261,7 +337,10 @@ export function useRightPanelTransition(open: boolean, enabled: boolean, width: 
         const before = proseLeftFor(container.clientWidth - width, maxW)
         run.landingErrorPx = now - proseLeftFor(container.clientWidth, maxW)
         run.animations.push(slide(prose, before - now, 0))
+        // 这一帧刚重排、位移刚起跳 —— 锚定被关了，自己拉
+        run.anchorFixPx = reanchor(container, pendingTopWord.current)
       }
+      pendingTopWord.current = null
       whenDone(run, () => finish('animationend'))
       return
     }
