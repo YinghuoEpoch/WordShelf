@@ -372,6 +372,38 @@ function LyricEditorInner({
     if (onReadingProgressChange) requestAnimationFrame(reportProgress)
   }, [pageId, editMode, onReadingProgressChange, reportProgress])
 
+  /**
+   * 顶栏进出时正文在屏幕上不动（用户 2026-09-08 选的 B，手机平板一起）。
+   *
+   * 进沉浸时两条顶栏离开文档流，正文容器的上沿往上挪一截（他量的是 117px），
+   * 里面的字整块跟着往上顶；退出沉浸又整块压下去。第五十五节时他说「正文自然要往上顶」，
+   * 第八十一节在开合右栏的语境里他觉得矛盾 —— 单独开合右栏会连带进出沉浸，
+   * 正文就一上一下。
+   *
+   * 治法：容器上沿挪了多少，scrollTop 就反向补多少，字在屏幕上原地不动，
+   * 顶栏像盖在正文上滑进滑出（和沉浸态里点空白叫顶栏的观感一致）。
+   * 靠近文首时 scrollTop 补不到负数，那一下会动，无妨。
+   *
+   * ⚠️ 只能比「上一次提交完成时」的上沿：这个 effect 跑的时候 DOM 已经改完了，
+   * 「以前在哪」得是上一趟记下的。下面那个无依赖的 effect 每次提交后记一次，
+   * **必须排在这个 effect 后面**，翻转那一趟才能先读旧值再记新值。
+   * 每次提交读一次 getBoundingClientRect 只会强制排版脏掉的那一小块，不贵。
+   *
+   * 顺序上和 App 里那个开合 hook 不打架：子组件的 layout effect 先跑，
+   * 它那边记顶端词时看到的已经是补偿过的位置。
+   */
+  const containerTopRef = useRef<number | null>(null)
+  useLayoutEffect(() => {
+    const el = scrollContainerRef.current
+    const prev = containerTopRef.current
+    if (!el || prev === null) return
+    const delta = el.getBoundingClientRect().top - prev
+    if (Math.abs(delta) > 0.5) el.scrollTop += delta
+  }, [immersive])
+  useLayoutEffect(() => {
+    containerTopRef.current = scrollContainerRef.current?.getBoundingClientRect().top ?? null
+  })
+
   const handleScroll = useCallback(() => {
     reportProgress()
     // 尾随节流：第一次滚动约一次，这段时间内的后续滚动并成同一次
