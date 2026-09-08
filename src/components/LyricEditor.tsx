@@ -1185,9 +1185,14 @@ function LyricEditorInner({
                   tabIndex={0}
                   // 手指按住时立刻变色，让用户知道「按住是有反应的、再等一下就成」；
                   // 触摸屏没有 hover，所以按压反馈是这里唯一的可点提示。
-                  className={`cursor-pointer rounded px-0.5 -mx-0.5 transition-colors select-none touch-manipulation ${highlightClass} ${
-                    hasNote ? WORD_LINE_CLASS : ''
-                  }`}
+                  //
+                  // ⚠️ 按下去那一下**不做过渡**，只在松开时淡出。从前一律 transition-colors（150ms），
+                  // 轻点 80ms 就松手，底色还没变过来就开始退，看着像没反应
+                  // （用户 2026-09-09：「你得接触一会才行，没那么灵敏」）。
+                  // 另一半在 useWordInteraction：轻点太快也让底色留够一小会儿再退。
+                  className={`cursor-pointer rounded px-0.5 -mx-0.5 select-none touch-manipulation ${
+                    isPressing ? '' : 'transition-colors'
+                  } ${highlightClass} ${hasNote ? WORD_LINE_CLASS : ''}`}
                   {...handlers}
                 >
                   {word}
