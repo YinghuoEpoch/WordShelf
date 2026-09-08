@@ -15,6 +15,7 @@ import { countAnchorCalc } from '../panelTransition'
 import { recordChromeShift, type ChromeShiftRecord } from '../chromeShift'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
 import { buildWordList, getRangeText as sliceRangeText } from '../utils/reconcile'
+import { pickLastVisibleAnchor } from '../utils/lastVisibleAnchor'
 
 const PROGRESS_DEBOUNCE_MS = 700
 /**
@@ -291,7 +292,11 @@ function LyricEditorInner({
    *
    * 两步走，避免把全篇几千个 `<span>` 都问一遍位置：
    * 先找出最后一个露着的 `<p>`（和 topVisibleLine 同一套扫法），
-   * 再在它里面找最后一个露着的词；那一段里一个都没露就退回上一段的最后一个词。
+   * 再在它里面找最后一个露着的词。
+   *
+   * ⚠️ 那一段里一个都没露时要**一路往回退**，不能只退一段 —— epub 的书段落之间
+   * 隔着空行，只退一段退到的是空 `<p>`，报出去的就是 null，右侧栏当场窜到顶。
+   * 挑法抽在 utils/lastVisibleAnchor.ts 里，有测试钉着；这里只负责量像素。
    */
   const lastVisibleAnchor = useCallback((): string | null => {
     const el = scrollContainerRef.current
@@ -301,28 +306,20 @@ function LyricEditorInner({
     const bottom = el.getBoundingClientRect().bottom
     const paragraphs = el.querySelectorAll<HTMLElement>('[data-line-index]')
 
-    let lastP: HTMLElement | null = null
-    let prevP: HTMLElement | null = null
-    for (const p of paragraphs) {
+    return pickLastVisibleAnchor(
+      paragraphs,
       // 上沿已经掉到屏幕外面：它和它后面的都不算露着
-      if (p.getBoundingClientRect().top >= bottom - 1) break
-      prevP = lastP
-      lastP = p
-    }
-    if (!lastP) return null
-
-    /** 这一段里最后一个上沿还没掉到屏幕外的词 */
-    const lastWordIn = (p: HTMLElement): string | null => {
-      const spans = p.querySelectorAll<HTMLElement>('[data-word-span]')
-      let id: string | null = null
-      for (const s of spans) {
-        if (s.getBoundingClientRect().top >= bottom - 1) break
-        if (s.id) id = s.id
+      (p) => p.getBoundingClientRect().top >= bottom - 1,
+      // 这一段里最后一个上沿还没掉到屏幕外的词
+      (p) => {
+        let id: string | null = null
+        for (const s of p.querySelectorAll<HTMLElement>('[data-word-span]')) {
+          if (s.getBoundingClientRect().top >= bottom - 1) break
+          if (s.id) id = s.id
+        }
+        return id
       }
-      return id
-    }
-
-    return lastWordIn(lastP) ?? (prevP ? lastWordIn(prevP) : null)
+    )
   }, [])
 
   const reportProgress = useCallback(() => {
