@@ -8,7 +8,6 @@ import type {
   Sentence,
   WordNote
 } from '../types'
-import { isOrphanAnnotation } from '../types'
 import { annotationToSentence } from '../utils/annotationViews'
 import { sortByText } from '../utils/annotationOrder'
 import { AutoMark } from './AutoMark'
@@ -16,7 +15,7 @@ import { BAND_SUB } from './chrome'
 import { readerThemeStyles } from './theme'
 import { EditedMark } from './EditedMark'
 import { AutoTextarea } from './AutoTextarea'
-import { getFolderReviewData } from '../hooks/getFolderReviewData'
+import { getFolderReviewData, getPageReviewData } from '../hooks/getFolderReviewData'
 import { useSpeak } from '../hooks/useSpeak'
 import { SpeechNotice } from './SpeechNotice'
 import { usePrefetchAudio } from '../hooks/usePrefetchAudio'
@@ -32,10 +31,12 @@ interface VocabCardItem {
   /** 单词还是短语。短语的卡片不显示音标/词性，改显示「用法」 */
   kind: 'word' | 'phrase'
   /**
-   * 单篇复习时是标注自己的 id，可以直接拿去排序。
-   * 文库复习时是「文档+拼写」拼出来的合并键 —— 那是合并出来的条目，不能排序。
+   * 卡片的键。单篇和文库复习里都是「文档+拼写」拼出来的合并键 ——
+   * 卡是按拼写合并出来的，不对应某一条标注。要删的话看 ids。
    */
   id: string
+  /** 这张卡底下压着的标注。单篇复习里滑掉一张卡就是删掉它们全部；文库复习不给删 */
+  ids?: string[]
   pageId: string
   pageTitle: string
   word: string
@@ -50,7 +51,7 @@ interface VocabCardItem {
   sourceText?: string
   /** 由 AI 自动填充，需要复核 */
   auto?: boolean
-   // 仅用于文库复习模式下的词频统计
+  /** 这张卡合并了几条标注。文库复习跨篇数，单篇复习数这一篇里划了几次。卡上不显示，只用来分组 */
   frequency?: number
 }
 
@@ -66,12 +67,13 @@ export interface VocabularyDashboardProps {
   onUpdateSentence?: (id: string, updates: Partial<Pick<Sentence, 'grammar' | 'meaning'>>) => void
   onVocabCountChange?: (count: number) => void
   /**
-   * 删除一条笔记（左滑露出的那颗按钮）。
+   * 删掉一张卡底下的全部笔记（左滑划到位之后确认那一下）。
    *
-   * **只在单篇文档的复习里**。文库复习的卡片是按拼写合并出来的，
-   * 一张卡背后可能是好几条标注，滑掉它等于一次删好几条。
+   * **只在单篇文档的复习里**。单篇里同一个词划了几次会合并成一张卡，
+   * 滑掉它就是这篇里的几处一起删，确认框会写明几处。
+   * 文库复习不给：那边一张卡横跨几篇，删了看不见删的是哪几处。
    */
-  onDeleteAnnotation?: (id: string) => void
+  onDeleteAnnotations?: (ids: string[]) => void
   /** 打开「一键填充」对话框；范围就是当前复习的文档或文库 */
   onOpenAutoFill?: () => void
   /** 填充弹窗是否开着：开着时这颗按钮保持「按下」的样子（仅限没有空白卡片那一档）*/
@@ -94,7 +96,7 @@ function VocabularyDashboardInner({
   onOpenAutoFill,
   autoFillOpen = false,
   autoFillCount = 0,
-  onDeleteAnnotation,
+  onDeleteAnnotations,
   readerSettings = { fontSize: 18, fontFamily: 'sans', theme: 'pure', accent: 'amber' }
 }: VocabularyDashboardProps) {
   const themeStyles = readerThemeStyles(readerSettings.theme)
@@ -108,7 +110,7 @@ function VocabularyDashboardInner({
    * 从前这里存的是「哪张卡滑开着」—— 现在没有滑开这回事了，
    * 划到位就直接弹确认框，所以存的是「正在问哪一条」。
    */
-  const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<{ ids: string[]; label: string } | null>(null)
 
   /**
    * 点词 / 点句读出来。这台手机不支持朗读时 canSpeak 为 false，喇叭就不画。
@@ -119,32 +121,39 @@ function VocabularyDashboardInner({
   const getPageTitle = (pageId: string) =>
     pages.find((p) => p.id === pageId)?.title || '未命名'
 
-  const getVocabByPage = (pageId: string): VocabCardItem[] => {
-    const pageTitle = getPageTitle(pageId)
-    return sortByText(
-      annotations.filter((a) => a.docId === pageId && a.type !== 'sentence' && a.text)
-    ).map((a) => ({
-        id: a.id,
-        kind: a.type === 'phrase' ? ('phrase' as const) : ('word' as const),
-        pageId,
-        pageTitle,
-        word: a.text,
-        phonetic: a.phonetic,
-        pos: a.pos,
-        definition: a.definition,
-        usage: a.grammar,
-        sourceText: a.sourceText,
-        orphaned: isOrphanAnnotation(a) || undefined,
-        auto: a.auto
-      }))
-  }
-
   const getGroupedVocab = (): { title: string; pageId: string; items: VocabCardItem[] }[] => {
     if (!reviewTarget) return []
     if (reviewTarget.type === 'page') {
-      const items = getVocabByPage(reviewTarget.id)
-      if (items.length === 0) return []
-      return [{ title: getPageTitle(reviewTarget.id), pageId: reviewTarget.id, items }]
+      /*
+        单篇复习：同一篇里划了不止一次的词合并成一张卡、单列一组放在最上面
+        （用户 2026-09-08 提的：文库那个汇总重复生词的功能，文档也要）。
+        **没有重复的文档和从前一模一样** —— 只有一组、标题还是文档名、次序还是正文顺序。
+      */
+      const { high, normal } = getPageReviewData(reviewTarget.id, pages, annotations)
+      const toCard = (i: (typeof high)[number]): VocabCardItem => ({
+        kind: i.kind,
+        pageId: i.pageId,
+        pageTitle: i.pageTitle,
+        id: i.id,
+        ids: i.ids,
+        word: i.word,
+        phonetic: i.phonetic,
+        pos: i.pos,
+        definition: i.definition,
+        usage: i.usage,
+        sourceText: i.sourceText,
+        orphaned: i.orphaned,
+        auto: i.auto,
+        frequency: i.frequency
+      })
+      const sections: { title: string; pageId: string; items: VocabCardItem[] }[] = []
+      if (high.length > 0) {
+        sections.push({ title: '高频 / 重点生词', pageId: `${reviewTarget.id}-high`, items: high.map(toCard) })
+      }
+      if (normal.length > 0) {
+        sections.push({ title: getPageTitle(reviewTarget.id), pageId: reviewTarget.id, items: normal.map(toCard) })
+      }
+      return sections
     }
 
     // 文库级别复习：按词汇聚合 + 词频统计
@@ -241,7 +250,7 @@ function VocabularyDashboardInner({
    * 「文库复习不给」这条**保留**：那边一张卡是按拼写把好几条标注合并出来的，
    * 删它等于一次删好几条，而且看不见删了哪几条。
    */
-  const swipable = reviewTarget?.type === 'page' && !!onDeleteAnnotation
+  const swipable = reviewTarget?.type === 'page' && !!onDeleteAnnotations
 
   const grouped = getGroupedVocab()
   const groupedSentences = getGroupedSentences()
@@ -402,9 +411,14 @@ function VocabularyDashboardInner({
                     <MaybeSwipe
                       key={item.id}
                       swipable={swipable}
-                      onRequestDelete={() =>
-                        setPendingDelete({ id: item.id, label: `「${item.word}」这条笔记` })
-                      }
+                      onRequestDelete={() => {
+                        const ids = item.ids ?? [item.id]
+                        setPendingDelete({
+                          ids,
+                          // 合并卡说清楚是几处，用户才知道这一下删的不止一条
+                          label: ids.length > 1 ? `「${item.word}」在这篇里的 ${ids.length} 处笔记` : `「${item.word}」这条笔记`
+                        })
+                      }}
                     >
                       <VocabCard
                         item={item}
@@ -436,7 +450,7 @@ function VocabularyDashboardInner({
                     <MaybeSwipe
                       key={item.id}
                       swipable={swipable}
-                      onRequestDelete={() => setPendingDelete({ id: item.id, label: '这条句摘' })}
+                      onRequestDelete={() => setPendingDelete({ ids: [item.id], label: '这条句摘' })}
                     >
                       <SentenceCard
                         item={item}
@@ -479,7 +493,7 @@ function VocabularyDashboardInner({
               <button
                 type="button"
                 onClick={() => {
-                  onDeleteAnnotation?.(pendingDelete.id)
+                  onDeleteAnnotations?.(pendingDelete.ids)
                   setPendingDelete(null)
                 }}
                 className="px-3 py-2 rounded-lg text-sm bg-red-600 text-white hover:bg-red-700"
@@ -635,6 +649,12 @@ function VocabCard({
     return () => saveRef.current()
   }, [isEditMode])
 
+  /*
+    划过不止一次的卡**不做任何记号**（用户 2026-09-08 定的）。
+    试过数字角标（碍事）、强调色边框（廉价）、强调色阴影、极淡的强调色底，最后他说
+    「什么都不加比较好」—— 高频卡本来就单独列在「高频 / 重点生词」那一组里，
+    分组标题已经把话说完了，卡上再标是重复。
+  */
   return (
     <div
       className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm transition-all min-h-[100px]"
@@ -711,11 +731,6 @@ function VocabCard({
                 {item.pos}
               </span>
             )
-          )}
-          {showEnglish && item.frequency && item.frequency > 1 && (
-            <span className="inline-flex items-center justify-center rounded-full bg-accent-100 text-accent-800 text-[11px] px-1.5 py-0.5">
-              {item.frequency}
-            </span>
           )}
         </div>
       </div>

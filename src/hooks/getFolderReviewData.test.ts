@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getFolderReviewData } from './getFolderReviewData'
+import { getFolderReviewData, getPageReviewData } from './getFolderReviewData'
 import type { Annotation, LyricPage } from '../types'
 
 const page = (id: string, bookId: string | null, over: Partial<LyricPage> = {}): LyricPage => ({
@@ -103,5 +103,67 @@ describe('getFolderReviewData', () => {
 
   it('空文库返回两个空组，不炸', () => {
     expect(getFolderReviewData('b1', PAGES, [])).toEqual({ high: [], normal: [] })
+  })
+})
+
+describe('getPageReviewData', () => {
+  const at = (line: number, w: number) => ({ start: `L${line}W${w}`, end: `L${line}W${w}` })
+
+  it('同一篇里划了两次的词合并成一张卡，带着两条标注的 id', () => {
+    const { high, normal } = getPageReviewData('p1', PAGES, [
+      word('a', 'p1', 'stood', { ...at(0, 1), definition: '站立' }),
+      word('b', 'p1', 'walked', at(1, 0)),
+      word('c', 'p1', 'Stood', at(2, 3))
+    ])
+    expect(high.map((i) => [i.word, i.frequency, i.ids])).toEqual([['stood', 2, ['a', 'c']]])
+    expect(high[0].definition).toBe('站立')
+    expect(normal.map((i) => i.word)).toEqual(['walked'])
+  })
+
+  it('只看这一篇，别篇同一个词不算', () => {
+    const { high, normal } = getPageReviewData('p1', PAGES, [
+      word('a', 'p1', 'stood', at(0, 0)),
+      word('b', 'p2', 'stood', at(0, 0))
+    ])
+    expect(high).toEqual([])
+    expect(normal.map((i) => [i.word, i.frequency])).toEqual([['stood', 1]])
+  })
+
+  it('没重复的词按正文顺序、一个都不挪；高频按次数、次数相同按第一次出现', () => {
+    const { high, normal } = getPageReviewData('p1', PAGES, [
+      word('z1', 'p1', 'zebra', at(0, 0)),
+      word('t1', 'p1', 'twice', at(0, 1)),
+      word('a1', 'p1', 'apple', at(0, 2)),
+      word('h1', 'p1', 'thrice', at(1, 0)),
+      word('t2', 'p1', 'twice', at(1, 1)),
+      word('h2', 'p1', 'thrice', at(2, 0)),
+      word('h3', 'p1', 'thrice', at(3, 0)),
+      word('l1', 'p1', 'later', at(4, 0)),
+      word('l2', 'p1', 'later', at(5, 0))
+    ])
+    expect(normal.map((i) => i.word)).toEqual(['zebra', 'apple'])
+    expect(high.map((i) => [i.word, i.frequency])).toEqual([
+      ['thrice', 3],
+      ['twice', 2],
+      ['later', 2]
+    ])
+  })
+
+  it('只出现一次的卡带「正文已改」的记号，合并卡不带', () => {
+    const { high, normal } = getPageReviewData('p1', PAGES, [
+      word('a', 'p1', 'once', { ...at(0, 0), type: 'phrase', sourceText: 'once upon' }),
+      word('b', 'p1', 'dup', { ...at(1, 0), type: 'phrase', sourceText: 'dup a' }),
+      word('c', 'p1', 'dup', { ...at(2, 0), type: 'phrase' })
+    ])
+    expect(normal[0].sourceText).toBe('once upon')
+    expect(high[0].sourceText).toBeUndefined()
+  })
+
+  it('句摘不参与；空文档返回两个空组', () => {
+    const { high, normal } = getPageReviewData('p1', PAGES, [
+      word('s', 'p1', '一整句话', { type: 'sentence', end: 'L0W5' })
+    ])
+    expect(high).toEqual([])
+    expect(normal).toEqual([])
   })
 })
