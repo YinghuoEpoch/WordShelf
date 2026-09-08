@@ -1541,6 +1541,14 @@ export default function App() {
             if (document.querySelector('[data-full-popup="true"]')) return
 
             if (isWide) {
+              /*
+                正文里还亮着一个选区（长按取过词、抽屉收了、词还高亮着）：这一下是「取消选中」，
+                归 LyricEditor 里那个全局 click 管。别顺手叫顶栏 —— 用户 2026-09-08 报的：
+                沉浸态里选中单词再点空白，「会同时触发唤起顶栏与取消选中」。
+                和抽屉开着时同一条规矩：一次点击只做一件事（第七十八节）。
+                只在宽屏判：窄屏那边他没报，先不动（「改平板就是改平板」）。
+              */
+              if (document.querySelector('[data-selection="true"]')) return
               // 笔记栏开着：这一下是「收起笔记栏」。收完往往正好进沉浸，那是下一次点的事
               if (activePanel === 'right') {
                 setActivePanel(null)
