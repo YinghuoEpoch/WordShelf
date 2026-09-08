@@ -293,6 +293,13 @@ body {
 }
 
 /*
+ * 两条挨着的范围线（前一句划完接着划下一句）之间**没有任何特殊处理**：
+ * 分块那一步（LyricEditor / utils/rangeClusters.ts）让两句各自一块，
+ * 中间的空格不在任何一块里，线就在那儿断开。
+ * ⚠️ 别再给线头加缩进或「橡皮」：第一版往里让了 0.4em，用户看到的是「b 的前面缺了一些」。
+ */
+
+/*
   根节点的裁剪。clip 和 hidden 都裁，区别是 hidden 仍是可编程滚动的容器：
   右侧栏收着时内容在屏幕右边外面（见 useRightPanelTransition），侧栏跟随那句
   scrollIntoView 会把 hidden 的根节点横着滚过去露出它。clip 不会。

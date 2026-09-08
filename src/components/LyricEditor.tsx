@@ -17,6 +17,7 @@ import { recordChromeShift, type ChromeShiftRecord } from '../chromeShift'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
 import { buildWordList, getRangeText as sliceRangeText } from '../utils/reconcile'
 import { pickLastVisibleAnchor } from '../utils/lastVisibleAnchor'
+import { buildCoverMap, clusterMask } from '../utils/rangeClusters'
 
 const PROGRESS_DEBOUNCE_MS = 700
 /**
@@ -725,21 +726,12 @@ function LyricEditorInner({
     return set
   }, [selection, orderedWords])
 
-  /** 已保存短语的 anchor 集合：正文里画一条连续实线 */
-  const savedPhraseAnchorSet = useMemo(() => {
-    if (!phrases || phrases.length === 0) return new Set<string>()
-    const set = new Set<string>()
-    for (const p of phrases) {
-      // 孤儿短语（原文已删除）不画线，它的坐标已经失效
-      if (p.orphaned) continue
-      const i = orderedWords.findIndex((w) => w.anchorId === p.startAnchorId)
-      const j = orderedWords.findIndex((w) => w.anchorId === p.endAnchorId)
-      if (i === -1 || j === -1) continue
-      const [lo, hi] = i <= j ? [i, j] : [j, i]
-      for (let k = lo; k <= hi; k++) set.add(orderedWords[k].anchorId)
-    }
-    return set
-  }, [phrases, orderedWords])
+  /**
+   * 已保存短语盖住了哪些词（每个词记的是被哪几条短语盖着，不是一个总集合）：
+   * 正文里画波浪线用。孤儿短语（原文已删除）不画线，它的坐标已经失效。
+   * 记「哪几条」而不是「有没有」，是为了两条挨着的短语能各画各的线（utils/rangeClusters.ts）。
+   */
+  const phraseCover = useMemo(() => buildCoverMap(phrases ?? [], orderedWords), [phrases, orderedWords])
 
   /** 当前选中的这段是不是一条已存过的短语（决定要不要显示删除按钮） */
   const canDeletePhrase = useMemo(() => {
@@ -750,23 +742,11 @@ function LyricEditorInner({
     )
   }, [selection, phrases, rangeKind])
 
-  // 已保存句摘的 anchor 集合：用于在原文中长期以虚线标记句子范围
-  const savedSentenceAnchorSet = useMemo(() => {
-    if (!sentences || sentences.length === 0) return new Set<string>()
-    const set = new Set<string>()
-    for (const s of sentences) {
-      // 同理：已标记「原文已删除」的句摘不再在正文里画虚线范围
-      if (s.orphaned) continue
-      const i = orderedWords.findIndex((w) => w.anchorId === s.startAnchorId)
-      const j = orderedWords.findIndex((w) => w.anchorId === s.endAnchorId)
-      if (i === -1 || j === -1) continue
-      const [lo, hi] = i <= j ? [i, j] : [j, i]
-      for (let k = lo; k <= hi; k++) {
-        set.add(orderedWords[k].anchorId)
-      }
-    }
-    return set
-  }, [sentences, orderedWords])
+  // 已保存句摘盖住了哪些词：正文里长期画虚线用。同理，孤儿句摘不画
+  const sentenceCover = useMemo(
+    () => buildCoverMap(sentences ?? [], orderedWords),
+    [sentences, orderedWords]
+  )
 
   /**
    * 正文里长按一个词，顺带读出来。
@@ -1097,57 +1077,19 @@ function LyricEditorInner({
           const segments = splitEdgePunctuation(tokenizeLine(line))
 
           /**
-           * 算出这一行里，某个坐标集合覆盖了哪几段（连英文词之间的空格、标点一起算进去）。
-           * 句摘（虚线）和短语（实线）各算一份 —— 两条线的画法不同，但覆盖范围的算法一样。
+           * 算出这一行里，句摘（虚线）和短语（波浪线）各盖住哪几段、分成几簇
+           * （连英文词之间的空格、标点一起算进去）。算法在 utils/rangeClusters.ts，
+           * 两条线的画法不同，但分簇的算法一样。
            *
-           * `withEdges` 决定要不要连两头紧贴的标点一起盖：
-           * 句摘要（存下来的原文就带着引号句号），短语不要（存进去的两头是剥干净的，
-           * 线比字长就对不上了）。
+           * 相邻的两条范围（前一句划完接着划下一句）是两簇，中间的空格谁也不盖，
+           * 那就是两条线之间的空档 —— 从前并成一簇、空格一起盖，两条线接成一条
+           * （用户 2026-09-09 报的，句摘和短语都是）。
+           * ⚠️ 空档就只有那个空格，线要顶着字画，别再往里让（第一版让了 0.4em，
+           * 用户说「b 的前面缺了一些」）。
            */
-          const maskFor = (anchorSet: Set<string>, withEdges: boolean): boolean[] => {
-            const mask = new Array(segments.length).fill(false)
-            if (!anchorSet.size) return mask
-            let wordIndexForSaved = 0
-            let clusterStart: number | null = null
-            let clusterEnd: number | null = null
-
-            // 结束当前簇：簇内全部标上；句摘还要把紧贴两头的标点段一并纳入
-            const flush = () => {
-              if (clusterStart === null || clusterEnd === null) return
-              let lo = clusterStart
-              let hi = clusterEnd
-              if (withEdges) {
-                if (lo > 0 && segments[lo - 1].edge === 'open') lo--
-                if (hi < segments.length - 1 && segments[hi + 1].edge === 'close') hi++
-              }
-              for (let k = lo; k <= hi; k++) mask[k] = true
-              clusterStart = null
-              clusterEnd = null
-            }
-
-            for (let segIdx = 0; segIdx < segments.length; segIdx++) {
-              const seg = segments[segIdx]
-              if (seg.type === 'en') {
-                const anchorIdForSeg = getAnchorId(lineIndex, wordIndexForSaved)
-                const isSavedWord = anchorSet.has(anchorIdForSeg)
-                if (isSavedWord) {
-                  if (clusterStart === null) {
-                    clusterStart = segIdx
-                  }
-                  clusterEnd = segIdx
-                } else {
-                  flush()
-                }
-                wordIndexForSaved++
-              }
-            }
-            // 行尾仍有未结束的簇
-            flush()
-            return mask
-          }
-
-          const savedSegmentMask = maskFor(savedSentenceAnchorSet, true)
-          const phraseSegmentMask = maskFor(savedPhraseAnchorSet, false)
+          const anchorIdAt = (wordIdx: number) => getAnchorId(lineIndex, wordIdx)
+          const sentenceMask = clusterMask(segments, anchorIdAt, sentenceCover, true)
+          const phraseMask = clusterMask(segments, anchorIdAt, phraseCover, false)
 
           let wordIndex = 0
 
@@ -1215,12 +1157,13 @@ function LyricEditorInner({
             )
           }
 
-          // 将一行拆分为若干块，按「是否在句摘里 / 是否在短语里」分段。
-          // 句摘画虚线、短语画实线；一段话既是句摘又含短语时两条线会叠在一起，
-          // 所以用「两个标记合起来」当分块依据，而不是只看句摘。
+          // 将一行拆分为若干块，按「在第几簇句摘里 / 在第几簇短语里」分段。
+          // 句摘画虚线、短语画波浪线；一段话既是句摘又含短语时两条线会叠在一起，
+          // 所以用「两个簇号合起来」当分块依据，而不是只看句摘。
+          // 簇号不同就是不同的块 —— 两条挨着的句摘各自一块，线才分得开。
           const lineChildren: React.ReactNode[] = []
           let segIdx = 0
-          const kindOf = (i: number) => `${savedSegmentMask[i] ? 's' : ''}${phraseSegmentMask[i] ? 'p' : ''}`
+          const kindOf = (i: number) => `${sentenceMask.cluster[i]}/${phraseMask.cluster[i]}`
           while (segIdx < segments.length) {
             const kind = kindOf(segIdx)
             let end = segIdx + 1
@@ -1233,14 +1176,14 @@ function LyricEditorInner({
               chunkElems.push(renderInnerSegment(segments[k], k))
             }
 
-            if (kind) {
+            if (kind !== '0/0') {
               // 三条线的位置一律用 em，字号调大时跟着一起长，不会挤到下一行去。
               // 范围越大，线越靠下：单词(2px) < 短语(0.28em) < 句摘(0.62em)，
               // 叠在一起时三条都看得见 —— 从前短语用 border-b，
               // 和句摘的 border-b 落在同一条水平线上，虚线整条被实线盖住。
               // 线型也各不相同：单词直实线、短语波浪线、句摘虚线，一眼可分。
               // 短语和句摘那两条是背景图不是下划线，缘由见文件开头。
-              const inner = phraseSegmentMask[segIdx] ? (
+              const inner = phraseMask.cluster[segIdx] ? (
                 <span className={PHRASE_LINE_CLASS}>{chunkElems}</span>
               ) : (
                 chunkElems
@@ -1248,7 +1191,7 @@ function LyricEditorInner({
               lineChildren.push(
                 <span
                   key={`chunk-${lineIndex}-${segIdx}`}
-                  className={savedSegmentMask[segIdx] ? SENTENCE_LINE_CLASS : ''}
+                  className={sentenceMask.cluster[segIdx] ? SENTENCE_LINE_CLASS : ''}
                 >
                   {inner}
                 </span>
