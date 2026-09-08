@@ -654,9 +654,10 @@ function VocabCard({
 
   return (
     <div
-      className={`rounded-xl border bg-white p-4 shadow-sm transition-all min-h-[100px] ${
-        // 划过不止一次的卡：边框用强调色，不标数字（用户 2026-09-08 定的，数字太碍事）
-        repeated ? 'border-accent-400' : 'border-stone-200'
+      className={`rounded-xl border border-stone-200 bg-white p-4 transition-all min-h-[100px] ${
+        // 划过不止一次的卡：普通卡那一圈阴影换成强调色的，边框和别的卡一样
+        //（用户 2026-09-08 定的：数字太碍事，强调色边框又太廉价，要和普通卡和谐）
+        repeated ? 'shadow-[0_2px_8px_0_rgb(var(--accent-500)/0.35)]' : 'shadow-sm'
       }`}
       title={repeated ? `划过 ${item.frequency} 次` : undefined}
       onClick={(e) => {
