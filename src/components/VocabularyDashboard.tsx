@@ -51,7 +51,7 @@ interface VocabCardItem {
   sourceText?: string
   /** 由 AI 自动填充，需要复核 */
   auto?: boolean
-  /** 这张卡合并了几条标注。文库复习跨篇数，单篇复习数这一篇里划了几次；大于 1 才显示角标 */
+  /** 这张卡合并了几条标注。文库复习跨篇数，单篇复习数这一篇里划了几次。卡上不显示，只用来分组 */
   frequency?: number
 }
 
@@ -649,17 +649,15 @@ function VocabCard({
     return () => saveRef.current()
   }, [isEditMode])
 
-  /** 这一篇（或这个文库）里划过不止一次 */
-  const repeated = !!item.frequency && item.frequency > 1
-
+  /*
+    划过不止一次的卡**不做任何记号**（用户 2026-09-08 定的）。
+    试过数字角标（碍事）、强调色边框（廉价）、强调色阴影、极淡的强调色底，最后他说
+    「什么都不加比较好」—— 高频卡本来就单独列在「高频 / 重点生词」那一组里，
+    分组标题已经把话说完了，卡上再标是重复。
+  */
   return (
     <div
-      className={`rounded-xl border border-stone-200 p-4 shadow-sm transition-all min-h-[100px] ${
-        // 划过不止一次的卡：底色换成极淡的强调色，边框和阴影都和普通卡一样
-        //（用户 2026-09-08 选的：数字太碍事、强调色边框太廉价、阴影也不对，像便签纸里挑出来的一张）
-        repeated ? 'bg-accent-50' : 'bg-white'
-      }`}
-      title={repeated ? `划过 ${item.frequency} 次` : undefined}
+      className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm transition-all min-h-[100px]"
       onClick={(e) => {
         // 点在输入框 / 按钮上时不要连带翻开答案
         if ((e.target as HTMLElement).closest('input, textarea, button, select, a')) return
