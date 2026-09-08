@@ -85,7 +85,10 @@ export function useWordInteraction({
         if (e.button !== 0) return
         firedRef.current = false
         startPosRef.current = { x: e.clientX, y: e.clientY }
-        setPressingAnchorId(anchorId)
+        // 按压的深色只给「还没选中任何词」时的那一下。已经有选区之后再点别的词是在连词成句 /
+        // 改范围，范围自己有浅底色，不再叠一层深的（用户 2026-09-09：「第二个单词不需要这个待遇」）。
+        // 从前它一直在，只是被 150ms 过渡拖成半透明看不出来；第九十节把亮改成瞬时之后就露出来了
+        if (!hasSelection) setPressingAnchorId(anchorId)
 
         if (timerRef.current) clearTimeout(timerRef.current)
         timerRef.current = setTimeout(() => {
