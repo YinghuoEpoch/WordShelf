@@ -954,6 +954,8 @@ function LyricEditorInner({
         <span className="text-sm opacity-80 truncate">{interactionHint}</span>
         <button
           type="button"
+          // 贴着右边缘：宽屏开合笔记栏时和侧栏边缘同步滑（见 useRightPanelTransition）
+          data-slide-with-panel
           onClick={() => {
             // 趁阅读容器还在，先记下读到第几行；进去之后照这一行把 textarea 滚过去
             pendingEditLineRef.current = topVisibleLine()

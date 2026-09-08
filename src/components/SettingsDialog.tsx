@@ -452,6 +452,10 @@ function PanelTransitionReadout({ records }: { records: PanelTransitionRecord[] 
                   label="正文落点偏差"
                   value={r.landingErrorPx === undefined ? '—（没有正文）' : `${r.landingErrorPx.toFixed(1)} px`}
                 />
+                <Row
+                  label="锚定补偿"
+                  value={r.anchorFixPx === undefined ? '—' : `${r.anchorFixPx.toFixed(1)} px`}
+                />
               </div>
             ))}
           </div>
@@ -462,6 +466,7 @@ function PanelTransitionReadout({ records }: { records: PanelTransitionRecord[] 
           系统栏调用不为 0，是安卓的系统栏动画插了进来；
           锚点计算不为 0，是笔记栏跟随在动画期间也在算。
           正文落点偏差是「动画把正文送到的位置」和「重排后正文实际位置」的差，理想是 0。
+          锚定补偿是重排后把屏幕顶端那个词拉回原高度拉了多少，拉完之后它应该不动。
         </p>
       </Section>
     </div>
