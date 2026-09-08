@@ -14,6 +14,7 @@ import {
   judgeSmoothness,
   type PanelTransitionRecord
 } from '../panelTransition'
+import { getChromeShifts, type ChromeShiftRecord } from '../chromeShift'
 import { CloudTtsPanel } from './CloudTtsPanel'
 import { SyncPanel } from './SyncPanel'
 import {
@@ -473,6 +474,74 @@ function PanelTransitionReadout({ records }: { records: PanelTransitionRecord[] 
   )
 }
 
+/**
+ * 顶栏进出参数（第八十一节 B 的诊断）。
+ *
+ * 平板上「顶栏进出正文不动」验过没问题，手机上反复点空白还会抖，
+ * 差别不在 React 里。这一屏记翻转那一趟补了多少，再看之后三次采样里谁还在动：
+ * 词的高度变了是正文动了；容器上沿变了是顶栏那一截又变了；innerHeight 变了是
+ * WebView 被系统栏推着变了尺寸；--sa-top 变了是原生推了新留白。
+ */
+function ChromeShiftReadout({ records }: { records: ChromeShiftRecord[] }) {
+  return (
+    <div className="space-y-4">
+      <Section title="最近几次顶栏进出（最新的在上）">
+        {records.length === 0 ? (
+          <p className="text-sm text-ink-muted">还没有记录。回到正文进出一次沉浸，等一秒多再进来看。</p>
+        ) : (
+          <div className="divide-y divide-paper-border">
+            {records.map((r) => (
+              <div key={r.at} className="py-2 space-y-0.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm text-ink">{r.immersive ? '顶栏走（进沉浸）' : '顶栏回（出沉浸）'}</span>
+                  <span className="text-xs text-ink-muted">
+                    {new Date(r.at).toLocaleTimeString('zh-CN', { hour12: false })}
+                  </span>
+                </div>
+                <Row label="容器上沿 前 → 后" value={`${r.prevTop.toFixed(0)} → ${r.newTop.toFixed(0)}`} />
+                <Row label="补偿" value={`${r.applied.toFixed(1)} px`} />
+                <Row label="scrollTop 前 → 后" value={`${r.scrollBefore.toFixed(0)} → ${r.scrollAfter.toFixed(0)}`} />
+                <Row label="顶端词" value={r.wordId ?? '—'} />
+                <div className="pt-1 overflow-x-auto">
+                  <table className="text-xs text-ink w-full">
+                    <thead className="text-ink-muted">
+                      <tr>
+                        <th className="text-left font-normal pr-2">之后</th>
+                        <th className="text-right font-normal pr-2">词高</th>
+                        <th className="text-right font-normal pr-2">容器顶</th>
+                        <th className="text-right font-normal pr-2">scrollTop</th>
+                        <th className="text-right font-normal pr-2">innerH</th>
+                        <th className="text-right font-normal">sa-top / real</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {r.samples.map((s) => (
+                        <tr key={s.afterMs}>
+                          <td className="pr-2">{s.afterMs} ms</td>
+                          <td className="text-right pr-2">{s.wordY === null ? '—' : s.wordY.toFixed(0)}</td>
+                          <td className="text-right pr-2">{s.containerTop.toFixed(0)}</td>
+                          <td className="text-right pr-2">{s.scrollTop.toFixed(0)}</td>
+                          <td className="text-right pr-2">{s.innerHeight}</td>
+                          <td className="text-right">{s.saTop} / {s.saTopReal}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-ink-muted leading-relaxed pt-1">
+          理想是四次采样里「词高」一个数不变。词高变了而容器顶没变，是滚动位置被谁动了；
+          容器顶变了，是顶栏那一截在翻转之后又变了；innerH 变了，是系统栏把 WebView 推大推小了；
+          sa-top 变了，是原生在翻转之后推了新的留白。
+        </p>
+      </Section>
+    </div>
+  )
+}
+
 /** 一排等宽的单选按钮。字体和纸色长得一样，所以收成一个 */
 function Choices<T extends string>({
   value,
@@ -560,6 +629,7 @@ type SubScreen =
   | 'speechDev'
   | 'dev'
   | 'panelDev'
+  | 'chromeDev'
 
 /** 每块子屏顶栏写什么。Record 是完整的，少一屏编译不过 */
 const SUB_TITLE: Record<SubScreen, string> = {
@@ -571,7 +641,8 @@ const SUB_TITLE: Record<SubScreen, string> = {
   syncSize: '同步数据',
   speechDev: '朗读引擎参数',
   dev: '开发者',
-  panelDev: '侧栏过渡参数'
+  panelDev: '侧栏过渡参数',
+  chromeDev: '顶栏进出参数'
 }
 
 export function SettingsDialog({
@@ -617,6 +688,8 @@ export function SettingsDialog({
   const [syncConfig, setSyncConfig] = useState<SyncConfig>(loadSyncConfig)
   /** 侧栏开合的读数。进那一屏时读一次 —— 每开合一次就多一条 */
   const [panelRecords, setPanelRecords] = useState<PanelTransitionRecord[]>([])
+  /** 顶栏进出的读数。进那一屏时读一次 */
+  const [chromeRecords, setChromeRecords] = useState<ChromeShiftRecord[]>([])
 
   useEffect(() => {
     if (open) {
@@ -669,6 +742,12 @@ export function SettingsDialog({
   const openPanelDev = () => {
     setPanelRecords(getPanelTransitions())
     setSub('panelDev')
+  }
+
+  /** 进「顶栏进出参数」那一屏时读一次最近的记录（采样要 1.2 秒才齐，翻完顶栏等一下再进来） */
+  const openChromeDev = () => {
+    setChromeRecords(getChromeShifts())
+    setSub('chromeDev')
   }
 
   /** 进「朗读引擎参数」那一屏时现问一次引擎 —— 装了新的语音包之后这些数会变 */
@@ -848,6 +927,8 @@ export function SettingsDialog({
             <SafeAreaReadout info={insetInfo} />
           ) : sub === 'panelDev' ? (
             <PanelTransitionReadout records={panelRecords} />
+          ) : sub === 'chromeDev' ? (
+            <ChromeShiftReadout records={chromeRecords} />
           ) : (
             <>
               <Section title="上手">
@@ -1098,6 +1179,19 @@ export function SettingsDialog({
                     <span className="block text-sm text-ink">侧栏过渡参数</span>
                     <span className="block text-xs text-ink-muted">
                       开合笔记栏那 200 毫秒画了几帧、卡在哪
+                    </span>
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-ink-muted shrink-0" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => enterSub(openChromeDev)}
+                  className="w-full flex items-center gap-2 text-left"
+                >
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm text-ink">顶栏进出参数</span>
+                    <span className="block text-xs text-ink-muted">
+                      进出沉浸时正文补了多少、之后还有谁在动
                     </span>
                   </span>
                   <ChevronRight className="w-4 h-4 text-ink-muted shrink-0" />

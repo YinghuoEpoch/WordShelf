@@ -24,6 +24,23 @@ const MIN_TOP = 24
 
 /** 上一次「系统栏看得见的时候」状态栏有多高。见 apply() 里 --sa-top-real 的说明 */
 let lastRealTop = 0
+/**
+ * 系统栏此刻是不是**我们自己**藏起来的（沉浸阅读）。
+ *
+ * 藏着的期间原生报上来的 top **不一定是 0**：用户的手机报的是 29（刘海那一截），
+ * 而状态栏本来是 38。从前只拦「报 0」，29 就混进 lastRealTop 了 —— 顶栏按它留位置，
+ * 正文在翻转之后 150ms 又挪 9px，每个来回抖一下（第八十一节，读数屏量到的）。
+ * 现在藏着的期间一律不更新。平板上报的是真 0，两条规则结果一样。
+ */
+let barsHidden = false
+
+/**
+ * 原生报了一次 top 之后，「状态栏本来多高」该变成多少。抽成纯函数是为了钉住这条规则：
+ * 藏着的期间报什么都不采信（0 或刘海的 29），放出来之后报了正数就跟上。
+ */
+export function realTopAfter(prev: number, reported: number, hidden: boolean): number {
+  return reported > 0 && !hidden ? reported : prev
+}
 
 /**
  * 打包时刻（vite.config.ts 里 define 进来的）。
@@ -67,6 +84,8 @@ const SafeArea = registerPlugin<{
 export async function setSystemBarsHidden(hidden: boolean): Promise<void> {
   // 只记次数，不改行为：「侧栏过渡参数」那一屏要看动画期间它被调了几回
   countSystemBarCall()
+  // 先记状态再叫原生：原生随后推上来的留白要靠这一格判断该不该采信（见 barsHidden）
+  barsHidden = hidden
   if (!Capacitor.isNativePlatform()) return
   try {
     await SafeArea.setImmersive({ on: hidden })
@@ -163,13 +182,14 @@ function apply(
    *
    * 沉浸时系统栏藏起来了，原生报的 top 是 0，`--sa-top` 会掉到保底的 24 ——
    * 拿它给顶栏留位置就留窄了。这一格记着「上一次看得见的时候有多高」：
-   * 报 0 就不更新，报了真值就跟上（所以转屏、换机器都自动跟着走）。
+   * **系统栏藏着的期间一律不更新**（报 0 也好、报刘海的 29 也好，都不是状态栏），
+   * 放出来之后报了真值就跟上（所以转屏、换机器都自动跟着走）。
    *
    * 退出沉浸的那一瞬间尤其要紧：网页那一步是瞬间的，而系统栏要等安卓滑完动画
    * 才把新尺寸报上来。中间那一小段若按 `--sa-top` 留位置，顶栏就会先长一截、
    * 再长一截 —— 用户报过的「变宽然后再变宽一点」。
    */
-  if (top > 0) lastRealTop = top
+  lastRealTop = realTopAfter(lastRealTop, top, barsHidden)
   s.setProperty('--sa-top-real', `${Math.max(lastRealTop, MIN_TOP)}px`)
   s.setProperty('--sa-right', `${right}px`)
   s.setProperty('--sa-bottom', `${bottom}px`)
