@@ -12,6 +12,7 @@ import { useWordInteraction } from '../hooks/useWordInteraction'
 import { useBackHandler, BackPriority } from '../hooks/useBackHandler'
 import { useIsWide } from '../hooks/useWideLayout'
 import { countAnchorCalc } from '../panelTransition'
+import { recordChromeShift, type ChromeShiftRecord } from '../chromeShift'
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight'
 import { buildWordList, getRangeText as sliceRangeText } from '../utils/reconcile'
 
@@ -397,8 +398,55 @@ function LyricEditorInner({
     const el = scrollContainerRef.current
     const prev = containerTopRef.current
     if (!el || prev === null) return
-    const delta = el.getBoundingClientRect().top - prev
+    const newTop = el.getBoundingClientRect().top
+    const delta = newTop - prev
+    const scrollBefore = el.scrollTop
     if (Math.abs(delta) > 0.5) el.scrollTop += delta
+
+    /*
+      读数（设置 → 开发者 → 顶栏进出参数）：翻转这一趟补了多少，之后再采三次样。
+      手机上反复点空白还会抖，平板不会 —— 差别在 React 之外，得看翻转之后谁还在动。
+    */
+    const top = el.getBoundingClientRect().top
+    let wordId: string | null = null
+    for (const p of el.querySelectorAll<HTMLElement>('[data-line-index]')) {
+      if (p.getBoundingClientRect().bottom <= top) continue
+      for (const s of p.querySelectorAll<HTMLElement>('[data-word-span]')) {
+        if (s.getBoundingClientRect().bottom > top && s.id) {
+          wordId = s.id
+          break
+        }
+      }
+      if (wordId) break
+    }
+    const rec: ChromeShiftRecord = {
+      at: Date.now(),
+      immersive,
+      prevTop: prev,
+      newTop,
+      applied: Math.abs(delta) > 0.5 ? delta : 0,
+      scrollBefore,
+      scrollAfter: el.scrollTop,
+      wordId,
+      samples: []
+    }
+    recordChromeShift(rec)
+    const sample = (afterMs: number) => {
+      const cs = getComputedStyle(document.documentElement)
+      const w = wordId ? document.getElementById(wordId) : null
+      rec.samples.push({
+        afterMs,
+        containerTop: el.getBoundingClientRect().top,
+        wordY: w ? w.getBoundingClientRect().top : null,
+        scrollTop: el.scrollTop,
+        innerHeight: window.innerHeight,
+        saTop: cs.getPropertyValue('--sa-top').trim(),
+        saTopReal: cs.getPropertyValue('--sa-top-real').trim()
+      })
+    }
+    sample(0)
+    const timers = [150, 500, 1200].map((ms) => setTimeout(() => sample(ms), ms))
+    return () => timers.forEach(clearTimeout)
   }, [immersive])
   useLayoutEffect(() => {
     containerTopRef.current = scrollContainerRef.current?.getBoundingClientRect().top ?? null
