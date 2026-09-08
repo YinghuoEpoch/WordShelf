@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { buildMarkLines, runMark, LINE_BATCH_SIZE } from './runner'
 import type { LocatedMark } from './locate'
 import type { MarkPick, Marker } from './types'
+import { DEFAULT_MARK_OPTIONS } from './options'
 
 const content = [
   'He stood up and took off his hat', // L0
@@ -41,7 +42,7 @@ describe('跑一篇：定位与报数', () => {
     const p = await runMark({
       marker,
       content,
-      options: { level: 'cet4', amount: 'few' },
+      options: DEFAULT_MARK_OPTIONS,
       markedSpellings: new Set(),
       onBatch: (l) => {
         saved.push(l)
@@ -57,7 +58,7 @@ describe('跑一篇：定位与报数', () => {
     const p = await runMark({
       marker,
       content,
-      options: { level: 'cet4', amount: 'few' },
+      options: DEFAULT_MARK_OPTIONS,
       markedSpellings: new Set(['stood']),
       onBatch: () => {}
     })
@@ -71,7 +72,7 @@ describe('跑一篇：定位与报数', () => {
     const p = await runMark({
       marker,
       content,
-      options: { level: 'cet4', amount: 'few' },
+      options: DEFAULT_MARK_OPTIONS,
       markedSpellings: new Set(),
       onBatch: () => {},
       onProgress: (x) => seen.push(x.done)
@@ -88,7 +89,7 @@ describe('跑一篇：定位与报数', () => {
       runMark({
         marker,
         content,
-        options: { level: 'cet4', amount: 'few' },
+        options: DEFAULT_MARK_OPTIONS,
         markedSpellings: new Set(),
         onBatch: () => {},
         signal: ac.signal
@@ -107,7 +108,7 @@ describe('跑一篇：定位与报数', () => {
     const p = await runMark({
       marker,
       content: many,
-      options: { level: 'cet4', amount: 'few' },
+      options: DEFAULT_MARK_OPTIONS,
       markedSpellings: new Set(),
       onBatch: () => {}
     })

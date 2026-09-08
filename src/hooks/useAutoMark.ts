@@ -12,12 +12,14 @@ import type { AutoMarkState } from '../components/AutoMarkDialog'
  * **记住这一批新建了哪些 id**，好让用户整批撤销。
  */
 
-const emptyProgress = { done: 0, total: 0, marked: 0, missed: 0 }
+const emptyProgress = { done: 0, total: 0, marked: 0, missed: 0, excluded: 0 }
 
 /** 划完之后那条提示条要显示的内容 */
 export interface MarkOutcome {
   marked: number
   missed: number
+  /** 对上了但不是这次选的那一类，跳过了 */
+  excluded: number
   /** 这一批新建的标注 id，撤销时按它删 */
   createdIds: string[]
   /** 属于哪篇文档 —— 换一篇就该消失 */
@@ -110,7 +112,10 @@ export function useAutoMark({ docId, docName, content, writeAnnotations }: UseAu
                   // AI 划的一律带记号 —— 这本来就是一份待复核清单
                   auto: true
                 }
-                if (m.kind === 'word') {
+                // 「只划不填」：提示词已经叫它别写释义，这里再挡一道 —— 模型偶尔不听话
+                if (!options.fill) {
+                  // 什么都不填
+                } else if (m.kind === 'word') {
                   if (m.pick.phonetic) a.phonetic = m.pick.phonetic
                   if (m.pick.pos) a.pos = m.pick.pos
                   if (m.pick.definition) a.definition = m.pick.definition
@@ -131,6 +136,7 @@ export function useAutoMark({ docId, docName, content, writeAnnotations }: UseAu
           setOutcome({
             marked: progress.marked,
             missed: progress.missed,
+            excluded: progress.excluded,
             createdIds,
             docId
           })
@@ -150,6 +156,7 @@ export function useAutoMark({ docId, docName, content, writeAnnotations }: UseAu
             setOutcome({
               marked: createdIds.length,
               missed: 0,
+              excluded: 0,
               createdIds,
               docId
             })

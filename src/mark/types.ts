@@ -10,9 +10,22 @@ export type MarkLevel = 'cet4' | 'cet6' | 'kaoyan' | 'ielts'
 /** 一次划多少 */
 export type MarkAmount = 'few' | 'medium' | 'many'
 
+/** 划什么：单词 / 短语，可多选（至少一个） */
+export interface MarkKinds {
+  word: boolean
+  phrase: boolean
+}
+
 export interface MarkOptions {
   level: MarkLevel
   amount: MarkAmount
+  kinds: MarkKinds
+  /**
+   * 划上之后顺便把笔记填好（音标、释义……），还是只划、笔记留空。
+   * 只划的话，AI 只需要回 line / text / kind，不要它写释义 —— 省的是输出那头的 token。
+   * 留空的笔记之后在复习页「一键填充」能补上。
+   */
+  fill: boolean
 }
 
 /** 送给 AI 的一行正文。行号就是正文里的真实行号，AI 要原样带回来 */

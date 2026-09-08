@@ -40,6 +40,8 @@ export type SkipReason =
   | 'not-found'
   /** 这一篇里已经标过同样的词了（用户手标的，或本批前面已经划过） */
   | 'already-marked'
+  /** 对上了，但不是这次要划的那一类（只要单词它给了短语，或反过来） */
+  | 'kind-excluded'
 
 export interface LocateResult {
   located: LocatedMark[]
@@ -83,11 +85,14 @@ function findRun(lineWords: WordRef[], tokens: string[], fromIndex: number): [nu
  * @param picks          AI 挑出来的
  * @param markedSpellings 这一篇里已经标过的写法（规格化过的）。
  *                        同一个词一篇里只划一次 —— 用户手标过的也算数。
+ * @param kinds          这次要划哪几类。**按定位出来的实际类别过滤**，不听 AI 说的 kind ——
+ *                        提示词里已经叫它别给，这里是最后一道闸
  */
 export function locateMarks(
   content: string,
   picks: MarkPick[],
-  markedSpellings: ReadonlySet<string> = new Set()
+  markedSpellings: ReadonlySet<string> = new Set(),
+  kinds: { word: boolean; phrase: boolean } = { word: true, phrase: true }
 ): LocateResult {
   const words = buildWordList(content)
   const byLine = new Map<number, WordRef[]>()
@@ -127,14 +132,19 @@ export function locateMarks(
         ? lineWords[i].word
         : stripEdgePunctuation(getRangeText(content, words, startAnchorId, endAnchorId))
     const key = normalize(text)
+    const kind = i === j ? 'word' : 'phrase'
 
+    if (!kinds[kind]) {
+      skipped.push({ pick, reason: 'kind-excluded' })
+      continue
+    }
     if (taken.has(key)) {
       skipped.push({ pick, reason: 'already-marked' })
       continue
     }
 
     taken.add(key)
-    located.push({ pick, startAnchorId, endAnchorId, text, kind: i === j ? 'word' : 'phrase' })
+    located.push({ pick, startAnchorId, endAnchorId, text, kind })
   }
 
   return { located, skipped }

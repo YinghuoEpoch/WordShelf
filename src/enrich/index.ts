@@ -29,3 +29,4 @@ export type { ResolvedProvider }
 export * from './config'
 export * from './types'
 export * from './runner'
+export * from './fillOptions'

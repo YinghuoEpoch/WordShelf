@@ -187,7 +187,7 @@ interface RightSidebarProps {
   /** 划词弹窗是否开着：开着时这颗按钮一直保持「按下」的样子 */
   autoMarkOpen?: boolean
   /** 刚划完那一批的战报；null 表示没有可显示的 */
-  markOutcome?: { marked: number; missed: number; createdIds: string[] } | null
+  markOutcome?: { marked: number; missed: number; excluded: number; createdIds: string[] } | null
   onUndoMark?: (ids: string[]) => void
   onDismissMark?: () => void
   /** 当前文档阅读进度 0–100 */
@@ -702,6 +702,7 @@ function RightSidebarInner({
           <span className="flex-1">
             已划上 {markOutcome.marked} 条
             {markOutcome.missed > 0 && `，${markOutcome.missed} 条没对上原文`}
+            {markOutcome.excluded > 0 && `，${markOutcome.excluded} 条不是这次选的类型`}
           </span>
           {markOutcome.createdIds.length > 0 && onUndoMark && (
             <button

@@ -8,7 +8,7 @@ import {
   loadMarkOptions,
   saveMarkOptions
 } from '../mark/options'
-import type { MarkAmount, MarkLevel, MarkOptions, MarkProgress } from '../mark'
+import type { MarkAmount, MarkKinds, MarkLevel, MarkOptions, MarkProgress } from '../mark'
 import { describeTarget, loadConfig, resolveConfig, type AiConfig } from '../enrich'
 import { useBackHandler, BackPriority } from '../hooks/useBackHandler'
 
@@ -40,6 +40,15 @@ interface AutoMarkDialogProps {
 
 const LEVELS: MarkLevel[] = ['cet4', 'cet6', 'kaoyan', 'ielts']
 const AMOUNTS: MarkAmount[] = ['few', 'medium', 'many']
+const KINDS: Array<keyof MarkKinds> = ['word', 'phrase']
+const KIND_LABEL: Record<keyof MarkKinds, string> = { word: '单词', phrase: '短语' }
+
+/** 选项按钮：一排里选中的那个亮起来。三组选项共用，别各写一遍 */
+const chip = (on: boolean) =>
+  'flex-1 h-8 rounded-lg text-sm border disabled:opacity-40 ' +
+  (on
+    ? 'border-accent-500 bg-accent-50 text-accent-800 font-medium'
+    : 'border-paper-border text-ink-muted hover:bg-stone-50')
 
 export function AutoMarkDialog({
   open,
@@ -83,6 +92,17 @@ export function AutoMarkDialog({
     setOptions(next)
     saveMarkOptions(next)
   }
+
+  /** 划什么：可多选，但至少留一个 —— 两个都关等于没得划，最后那个点不掉 */
+  const toggleKind = (kind: keyof MarkKinds) => {
+    const next = { ...options.kinds, [kind]: !options.kinds[kind] }
+    if (!next.word && !next.phrase) return
+    pick({ kinds: next })
+  }
+
+  /** 划什么，写进开头那句话 */
+  const kindsText =
+    options.kinds.word && options.kinds.phrase ? '单词和短语' : options.kinds.word ? '单词' : '短语'
 
   const start = () => onStart(options)
 
@@ -139,10 +159,35 @@ export function AutoMarkDialog({
         ) : (
           <>
             <p className="text-xs text-ink-muted leading-relaxed">
-              AI 会通读《{docName}》，挑出值得记的单词和短语，
-              <span className="text-ink font-medium">直接划在正文上并填好释义</span>。
-              划完可以整批撤销。
+              AI 会通读《{docName}》，挑出值得记的{kindsText}，
+              {options.fill ? (
+                <span className="text-ink font-medium">直接划在正文上并填好释义</span>
+              ) : (
+                <>
+                  <span className="text-ink font-medium">只划在正文上，笔记留空</span>
+                  （之后可在复习页 AI 填充）
+                </>
+              )}
+              。划完可以整批撤销。
             </p>
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-ink-muted">划什么（可多选）</p>
+              <div className="flex gap-1.5">
+                {KINDS.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    disabled={running}
+                    onClick={() => toggleKind(k)}
+                    aria-pressed={options.kinds[k]}
+                    className={chip(options.kinds[k])}
+                  >
+                    {KIND_LABEL[k]}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-ink-muted">难度：只划到得上这个水平的词</p>
@@ -153,12 +198,7 @@ export function AutoMarkDialog({
                     type="button"
                     disabled={running}
                     onClick={() => pick({ level: l })}
-                    className={
-                      'flex-1 h-8 rounded-lg text-sm border disabled:opacity-40 ' +
-                      (l === options.level
-                        ? 'border-accent-500 bg-accent-50 text-accent-800 font-medium'
-                        : 'border-paper-border text-ink-muted hover:bg-stone-50')
-                    }
+                    className={chip(l === options.level)}
                   >
                     {LEVEL_LABEL[l]}
                   </button>
@@ -175,18 +215,35 @@ export function AutoMarkDialog({
                     type="button"
                     disabled={running}
                     onClick={() => pick({ amount: a })}
-                    className={
-                      'flex-1 h-8 rounded-lg text-sm border disabled:opacity-40 ' +
-                      (a === options.amount
-                        ? 'border-accent-500 bg-accent-50 text-accent-800 font-medium'
-                        : 'border-paper-border text-ink-muted hover:bg-stone-50')
-                    }
+                    className={chip(a === options.amount)}
                   >
                     {AMOUNT_LABEL[a]}
                   </button>
                 ))}
               </div>
               <p className="text-xs text-ink-muted">{AMOUNT_HINT[options.amount]}</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-ink-muted">顺便填笔记</p>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  disabled={running}
+                  onClick={() => pick({ fill: true })}
+                  className={chip(options.fill)}
+                >
+                  划上并填好
+                </button>
+                <button
+                  type="button"
+                  disabled={running}
+                  onClick={() => pick({ fill: false })}
+                  className={chip(!options.fill)}
+                >
+                  只划，不填
+                </button>
+              </div>
             </div>
 
             {running && (
@@ -211,6 +268,12 @@ export function AutoMarkDialog({
                   <span className="text-ink-muted">
                     {' '}
                     另有 {state.progress.missed} 条 AI 挑了但没对上原文，已跳过。
+                  </span>
+                )}
+                {state.progress.excluded > 0 && (
+                  <span className="text-ink-muted">
+                    {' '}
+                    {state.progress.excluded} 条不是这次选的类型，已跳过。
                   </span>
                 )}
                 {state.progress.marked === 0 && state.progress.missed === 0 && (
