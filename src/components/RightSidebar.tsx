@@ -9,6 +9,7 @@ import { useIsClamped } from '../hooks/useIsClamped'
 import { EditedMark } from './EditedMark'
 import { BAND_TOP, BAND_SUB } from './chrome'
 import { findFollowIndex } from '../utils/followScroll'
+import { ScrollEaser, centerTarget } from '../utils/scrollEase'
 
 /**
  * 从侧栏点一条笔记跳到正文之后，**这么久之内不跟随**。
@@ -395,11 +396,25 @@ function RightSidebarInner({
    * 跟着正文滚。
    *
    * 「跟到哪一条」是算出来的（findFollowIndex，有测试钉着）；
-   * 「怎么滚过去」交给 scrollIntoView({ block: 'nearest' }) —— 浏览器自己就懂
-   * 「看得见就别动，看不见才滚，而且只滚到刚好露出来」，不必自己算像素。
-   * 这正是用户选的那种停法（另两种是永远贴顶 / 永远居中）。
+   * 「怎么滚过去」：把那张卡摆到列表正中（centerTarget 算目标，有测试钉着），
+   * 用 ScrollEaser 按帧缓动追过去 —— 目标随时能换、不重启，缘由见 utils/scrollEase.ts。
+   * 打开这一栏、切标签、换文档这三种「重新对一次」瞬时到位，不做动画。
    */
   const listRef = useRef<HTMLUListElement>(null)
+  const easerRef = useRef(new ScrollEaser())
+  /**
+   * 「这一屏对好了没」。打开这一栏 / 切标签 / 换文档是新的一屏，先瞬时到位；
+   * 之后正文再滚才缓动追。
+   *
+   * ⚠️ 不能只看「场合变了没」：打开时效果先带着**上次关掉前的旧锚点**跑一遍，
+   * 阅读器随后才报来新锚点 —— 只按场合判的话，新锚点到了就当成「正文在滚」缓动过去，
+   * 打开那一下就会滑一段。所以记下场合刚换时的锚点，等锚点真的变过一次才算对好了。
+   */
+  const settleRef = useRef<{ key: string; anchorAtStart: string | null; settled: boolean }>({
+    key: '',
+    anchorAtStart: null,
+    settled: false
+  })
   /** 手动滚过侧栏就先别跟了。用 ref 不用 state：它只影响下一次要不要滚，不该引发重渲染 */
   const pausedRef = useRef(false)
   const lastAnchorRef = useRef(lastVisibleAnchor)
@@ -463,18 +478,52 @@ function RightSidebarInner({
     /*
       摆在侧栏正中间（用户 2026-09-04 改的口径，原先是「看不见才滚」）。
 
-      ⚠️ **瞬时，不用平滑。** 跟随每 120ms 就可能来一次，而一次平滑滚动要三四百毫秒 ——
-      后一次在前一次没走完时又发起，动画反复被重定向，表现就是用户报的
-      「标记的确会跟，但是不一定跟着滚动」。瞬时定位反而看着是跟手的：
-      它和正文同频率地一小格一小格挪，本来就不需要再补一层动画。
+      ⚠️ **不用原生 `behavior: 'smooth'`。** 跟随每 120ms 就可能来一次，而一次原生平滑要
+      三四百毫秒 —— 后一次在前一次没走完时又发起，动画反复被重定向（第七十三节）。
+      之后改成瞬时，列表就一格一格跳。现在是自己按帧逼近：目标换了也不重启。
+      只滚列表这一个容器，不像 scrollIntoView 那样连祖先一起滚。
     */
-    const li = listRef.current?.children[index] as HTMLElement | undefined
-    li?.scrollIntoView({ block: 'center', behavior: 'auto' })
+    const ul = listRef.current
+    const cont = ul?.parentElement
+    const li = ul?.children[index] as HTMLElement | undefined
+    if (!ul || !cont || !li) return
+    const target = centerTarget(
+      li.getBoundingClientRect().top - cont.getBoundingClientRect().top + cont.scrollTop,
+      li.offsetHeight,
+      cont.clientHeight,
+      cont.scrollHeight
+    )
+    const key = `${tab}|${currentPageId}`
+    const settle = settleRef.current
+    if (settle.key !== key) {
+      settle.key = key
+      settle.anchorAtStart = lastVisibleAnchor
+      settle.settled = false
+    }
+    if (!settle.settled) {
+      // 新的一屏：瞬时到位。锚点变过一次之后才算对好了，往后是正文在滚
+      easerRef.current.cancel()
+      cont.scrollTop = target
+      if (lastVisibleAnchor !== settle.anchorAtStart) settle.settled = true
+    } else {
+      easerRef.current.to(cont, target)
+    }
   }, [open, tab, currentPageId, lastVisibleAnchor, followIndex, focusIndex, savedNoteFocus])
+
+  // 收起来就停：下次打开是新的一屏，瞬时到位
+  useEffect(() => {
+    if (!open) {
+      easerRef.current.cancel()
+      settleRef.current.key = ''
+    }
+  }, [open])
+  useEffect(() => () => easerRef.current.cancel(), [])
 
   /** 用手碰了侧栏就先别跟。听指针动作而不是 scroll 事件 —— 后者分不清是谁滚的 */
   const pauseFollow = () => {
     pausedRef.current = true
+    // 正在追的话立刻停，否则手指和动画抢同一个 scrollTop
+    easerRef.current.cancel()
   }
 
   /** 跳转钉住到什么时候（时间戳）。见 JUMP_PIN_MS */
@@ -486,6 +535,7 @@ function RightSidebarInner({
    */
   const pinForJump = (index: number) => {
     pausedRef.current = true
+    easerRef.current.cancel()
     pinUntilRef.current = Date.now() + JUMP_PIN_MS
     setFocusOverride(index)
   }
