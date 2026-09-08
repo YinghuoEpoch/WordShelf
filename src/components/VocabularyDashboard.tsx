@@ -649,9 +649,16 @@ function VocabCard({
     return () => saveRef.current()
   }, [isEditMode])
 
+  /** 这一篇（或这个文库）里划过不止一次 */
+  const repeated = !!item.frequency && item.frequency > 1
+
   return (
     <div
-      className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm transition-all min-h-[100px]"
+      className={`rounded-xl border bg-white p-4 shadow-sm transition-all min-h-[100px] ${
+        // 划过不止一次的卡：边框用强调色，不标数字（用户 2026-09-08 定的，数字太碍事）
+        repeated ? 'border-accent-400' : 'border-stone-200'
+      }`}
+      title={repeated ? `划过 ${item.frequency} 次` : undefined}
       onClick={(e) => {
         // 点在输入框 / 按钮上时不要连带翻开答案
         if ((e.target as HTMLElement).closest('input, textarea, button, select, a')) return
@@ -725,11 +732,6 @@ function VocabCard({
                 {item.pos}
               </span>
             )
-          )}
-          {showEnglish && item.frequency && item.frequency > 1 && (
-            <span className="inline-flex items-center justify-center rounded-full bg-accent-100 text-accent-800 text-[11px] px-1.5 py-0.5">
-              {item.frequency}
-            </span>
           )}
         </div>
       </div>
