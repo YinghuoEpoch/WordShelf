@@ -293,6 +293,38 @@ body {
 }
 
 /*
+ * 两条挨着的范围线之间的断口（用户 2026-09-09：连着划两句、两个短语，线接成一条）。
+ *
+ * 分簇那一步已经让中间的空格不盖线了，但空格才 0.25em，虚线自己的间隔就有 0.2em，
+ * 单靠它分不出两条。所以后一条线的起点再往里让 0.4em：在线上面**再铺一层底色**
+ * 把线头盖掉。底色从阅读区挂的 `--reader-bg` 拿（三种纸色各不同，见 theme.ts），
+ * 写死一个白就会在青灰纸上露出一块白斑。
+ *
+ * 为什么不用 padding/margin 或 background-clip 之类的办法让线缩进：线本身画在
+ * `padding-bottom` 那一条里，clip 到内容盒它就整条没了；padding 又会把背景盒撑大。
+ * 铺一层同色的「橡皮」是唯一不动排版、不动线本身的做法。
+ *
+ * 0.4em 正好是虚线一个周期（0.2em 线 + 0.2em 空），让完之后紧接着就是一段实线，
+ * 不会从半截空档起头。波浪线也用同一个数，看着一致。
+ * 只在**这一簇紧接着前一簇**的块上加（LyricEditor 里的 breakBefore），
+ * 单独一条句摘或短语的起点照旧顶着字。
+ */
+.sentence-line.line-break-before {
+  background-image:
+    linear-gradient(var(--reader-bg), var(--reader-bg)),
+    repeating-linear-gradient(to right, rgb(var(--accent-600)) 0 0.2em, transparent 0.2em 0.4em);
+  background-repeat: no-repeat, repeat-x;
+  background-size: 0.4em 1px, 0.4em 1px;
+  background-position: left bottom, left bottom;
+}
+.phrase-line.line-break-before {
+  background-image: linear-gradient(var(--reader-bg), var(--reader-bg)), var(--phrase-wave);
+  background-repeat: no-repeat, repeat-x;
+  background-size: 0.4em 5px, 24px 5px;
+  background-position: left bottom, left bottom;
+}
+
+/*
   根节点的裁剪。clip 和 hidden 都裁，区别是 hidden 仍是可编程滚动的容器：
   右侧栏收着时内容在屏幕右边外面（见 useRightPanelTransition），侧栏跟随那句
   scrollIntoView 会把 hidden 的根节点横着滚过去露出它。clip 不会。
