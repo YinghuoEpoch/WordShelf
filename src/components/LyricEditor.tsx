@@ -9,6 +9,7 @@ import type { NotesMap, ReaderSettings, Sentence, WordNote } from '../types'
 import type { PhraseView } from '../utils/annotationViews'
 import { X, Trash2 } from 'lucide-react'
 import { useWordInteraction } from '../hooks/useWordInteraction'
+import { useSpeechPrefs } from '../hooks/useSpeechPrefs'
 import { useBackHandler, BackPriority } from '../hooks/useBackHandler'
 import { useIsWide } from '../hooks/useWideLayout'
 import { countAnchorCalc } from '../panelTransition'
@@ -861,9 +862,19 @@ function LyricEditorInner({
     [selection, normalizeRange, getRangeText, orderedWords, clearAll, openRange]
   )
 
+  /**
+   * 「点按单词发音」（设置 → 发音）。开着才把 onTap 给手势 hook —— 不给就是从前的样子：
+   * 没选中时轻点没反应。长按取词那条路一直会念，和这个开关无关。
+   */
+  const { tapToSpeak } = useSpeechPrefs()
+  const speakOnTap = useCallback(
+    (anchorId: string, word: string) => speak(anchorId, word, { lookup: true }),
+    [speak]
+  )
   const { getWordHandlers, pressingAnchorId, interactionHint } = useWordInteraction({
     onLongPress: openWordDrawer,
     onTapWithSelection: adjustSelection,
+    onTap: tapToSpeak ? speakOnTap : undefined,
     hasSelection: !!selection
   })
 

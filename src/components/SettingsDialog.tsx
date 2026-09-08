@@ -40,6 +40,8 @@ import {
   isCloudReady,
   type CloudTtsConfig
 } from '../speech/cloudTts'
+import { saveSpeechPrefs } from '../speech/prefs'
+import { useSpeechPrefs } from '../hooks/useSpeechPrefs'
 import {
   diagnoseSpeech,
   tryRead,
@@ -220,6 +222,16 @@ const THEMES = [
   { id: 'pure', label: '标准' },
   { id: 'original', label: '青灰' },
   { id: 'rice', label: '暖白' }
+] as const
+
+/** 发音那一栏的两组选项（用户 2026-09-08 加的），见 speech/prefs.ts */
+const TAP_SPEAK = [
+  { id: 'off', label: '长按才发音' },
+  { id: 'on', label: '点按也发音' }
+] as const
+const ACCENTS_SPEECH = [
+  { id: 'us', label: '美音' },
+  { id: 'uk', label: '英音' }
 ] as const
 
 /**
@@ -679,6 +691,8 @@ export function SettingsDialog({
   const [tryResults, setTryResults] = useState<Record<string, TryReadResult>>({})
   /** 这会儿正在试读哪一句（按钮期间禁用，免得两句叠在一起，读数就废了） */
   const [tryRunning, setTryRunning] = useState<string | null>(null)
+  /** 发音的两个开关：点按发不发音、词典录音的口音。改了当场生效，不用重开 */
+  const speechPrefs = useSpeechPrefs()
   /** 云端朗读的凭证。打开设置页时读一次，改一下存一下 */
   const [cloudConfig, setCloudConfig] = useState<CloudTtsConfig>(loadCloudConfig)
   /** 同步数据的读数。进那一屏时现算一次 —— 划了新词之后这些数就变了 */
@@ -1049,6 +1063,28 @@ export function SettingsDialog({
               </Section>
 
               <Section title="发音">
+                <div className="space-y-1.5">
+                  <span className="text-sm text-ink block">点按单词</span>
+                  <Choices
+                    value={speechPrefs.tapToSpeak ? 'on' : 'off'}
+                    options={TAP_SPEAK}
+                    onPick={(v) => saveSpeechPrefs({ ...speechPrefs, tapToSpeak: v === 'on' })}
+                  />
+                  <p className="text-xs text-ink-muted leading-relaxed">
+                    长按取词一直会发音。开了之后轻点单词也发音，不选中。
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <span className="text-sm text-ink block">词典录音</span>
+                  <Choices
+                    value={speechPrefs.accent}
+                    options={ACCENTS_SPEECH}
+                    onPick={(a) => saveSpeechPrefs({ ...speechPrefs, accent: a })}
+                  />
+                  <p className="text-xs text-ink-muted leading-relaxed">
+                    只对词典真人录音有效；云端合成和手机引擎不受影响。
+                  </p>
+                </div>
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex-1 min-w-0 text-sm text-ink">
                     {audioStats === null

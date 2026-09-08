@@ -5,6 +5,7 @@ import { createNativeSpeaker, openVoiceInstall } from './nativeSpeech'
 import { createDictPlayer } from './dictAudio'
 import { createHumanFirstSpeaker } from './humanFirst'
 import { createCloudPlayer } from './cloudVoice'
+import { accentType, getSpeechPrefs } from './prefs'
 
 /**
  * 朗读层入口。界面只跟这里打交道：问一句「能不能读」，要一个朗读器。
@@ -37,7 +38,12 @@ export function createSpeaker(): Speaker | null {
   if (!system) return null
   // 三级：真人录音 → 云端合成 → 这台机器的引擎。云端没配 key 就自动跳过，
   // 所以这里无条件挂上去，不必先问「配了没有」—— 见 humanFirst 的说明
-  return createHumanFirstSpeaker(system, createDictPlayer(), createCloudPlayer())
+  // 词典那一级的口音每次播放时问设置（英音 / 美音只对这一级有效，见 prefs.ts）
+  return createHumanFirstSpeaker(
+    system,
+    createDictPlayer(() => accentType(getSpeechPrefs().accent)),
+    createCloudPlayer()
+  )
 }
 
 /**
@@ -50,4 +56,5 @@ export function canOpenVoiceInstall(): boolean {
 
 export { openVoiceInstall }
 export * from './cloudTts'
+export * from './prefs'
 export * from './types'
