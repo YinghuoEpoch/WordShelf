@@ -999,7 +999,15 @@ function LyricEditorInner({
   }
 
   return (
-    <div className="lyric-editor relative flex flex-col h-full overflow-hidden bg-white">
+    /*
+      `data-selection`：正文里还亮着一个选区（抽屉已经收了、词还高亮着）。
+      App 里点空白那一下靠它判断「这一下归谁」—— 有选区时只清选区，不叫顶栏、不收侧栏。
+      和 `data-full-popup` 一个做法：这两件事都发生在这个组件里，App 只看 DOM 上有没有那个记号。
+    */
+    <div
+      className="lyric-editor relative flex flex-col h-full overflow-hidden bg-white"
+      data-selection={selection ? 'true' : undefined}
+    >
       {/*
         读不出来时说一句。**这一条是这次改动的重点**：长按取词就在这个组件里，
         而这里从前把 useSpeak 的 error 整个丢掉了 —— 用户在平板上得到的
