@@ -8,17 +8,16 @@ import type { EdgeSegment } from './punctuation'
  * 两条线接成一条（用户 2026-09-09 报的）。
  *
  * 现在每个词记的是「被哪几条范围盖着」：**相邻两个词只要共享至少一条范围就在同一簇**，
- * 否则断开。断开的两簇之间若只隔着空格、标点（没有任何没划过的词），
- * 单靠那一个空格的宽度分不出两条线 —— 虚线本身的间隔就有 0.2em，空格才 0.25em ——
- * 所以后一簇还要打上 `breakBefore`，让线的起点再往里让一截。
+ * 否则断开。两簇之间的空格、标点谁也不盖，那就是两条线之间的空档。
+ *
+ * ⚠️ 空档只有那一个空格，**别再往里让**：第一版让后一簇的线头往里缩 0.4em，
+ * 用户看到的是「b 的前面缺了一些」（2026-09-09）。线要顶着字画。
  *
  * 重叠或嵌套的两条范围（共享着词）仍是一簇，那本来就分不开。
  */
 export interface ClusterMask {
   /** 每一段属于第几簇；0 = 不在任何范围里。簇号按出现顺序从 1 起 */
   cluster: number[]
-  /** 这一段是某一簇的第一段，而且前一簇和它之间没有隔着没划过的词 */
-  breakBefore: boolean[]
 }
 
 /** 每个 anchorId 被哪几条范围盖着（范围的编号随便，只要同一条范围用同一个号） */
@@ -37,17 +36,13 @@ export function clusterMask(
   withEdges: boolean
 ): ClusterMask {
   const cluster = new Array<number>(segments.length).fill(0)
-  const breakBefore = new Array<boolean>(segments.length).fill(false)
-  if (cover.size === 0) return { cluster, breakBefore }
+  if (cover.size === 0) return { cluster }
 
   let nextId = 1
   let wordIndex = 0
   let clusterStart: number | null = null
   let clusterEnd: number | null = null
   let prevRanges: readonly number[] = []
-  /** 上一簇收掉之后，有没有经过一个没划过的词 */
-  let seenBareWord = false
-  let hadCluster = false
 
   const flush = () => {
     if (clusterStart === null || clusterEnd === null) return
@@ -59,9 +54,6 @@ export function clusterMask(
     }
     const id = nextId++
     for (let k = lo; k <= hi; k++) cluster[k] = id
-    breakBefore[lo] = hadCluster && !seenBareWord
-    hadCluster = true
-    seenBareWord = false
     clusterStart = null
     clusterEnd = null
     prevRanges = []
@@ -74,7 +66,6 @@ export function clusterMask(
     wordIndex++
     if (ranges.length === 0) {
       flush()
-      seenBareWord = true
       continue
     }
     if (clusterStart !== null && !shares(prevRanges, ranges)) flush()
@@ -83,7 +74,7 @@ export function clusterMask(
     prevRanges = ranges
   }
   flush()
-  return { cluster, breakBefore }
+  return { cluster }
 }
 
 /**

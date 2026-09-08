@@ -75,11 +75,6 @@ const WORD_LINE_CLASS =
 /** 短语那条波浪线：背景图，不走 text-decoration，缘由见 index.css 的 .phrase-line */
 const PHRASE_LINE_CLASS = 'phrase-line'
 const SENTENCE_LINE_CLASS = 'sentence-line'
-/**
- * 这一簇紧接着前一簇（中间只隔着空格或标点）：线的起点往里让一截，
- * 两条线才看得出是两条。样式在 index.css，靠阅读区挂着的 --reader-bg 把线头盖掉。
- */
-const LINE_BREAK_CLASS = 'line-break-before'
 
 /** 单词选择：仅一个词 */
 type WordSelection = { type: 'word'; anchorId: string; word: string }
@@ -1052,8 +1047,6 @@ function LyricEditorInner({
         onScroll={handleScroll}
         className={`reader-scroll flex-1 min-h-0 overflow-y-auto scroll-area touch-manipulation ${themeStyles.bg}`}
         style={{
-          // 正文里范围线的断口拿它当「橡皮」，得和这块底色一样（见 theme.ts）
-          ['--reader-bg' as string]: themeStyles.bgHex,
           willChange: 'transform',
           transform: 'translateZ(0)',
           overscrollBehaviorY: 'contain',
@@ -1088,9 +1081,11 @@ function LyricEditorInner({
            * （连英文词之间的空格、标点一起算进去）。算法在 utils/rangeClusters.ts，
            * 两条线的画法不同，但分簇的算法一样。
            *
-           * 相邻的两条范围（前一句划完接着划下一句）是两簇，中间的空格不盖，
-           * 后一簇还带 `breakBefore`，线的起点再往里让一截 —— 否则两条线接成一条
+           * 相邻的两条范围（前一句划完接着划下一句）是两簇，中间的空格谁也不盖，
+           * 那就是两条线之间的空档 —— 从前并成一簇、空格一起盖，两条线接成一条
            * （用户 2026-09-09 报的，句摘和短语都是）。
+           * ⚠️ 空档就只有那个空格，线要顶着字画，别再往里让（第一版让了 0.4em，
+           * 用户说「b 的前面缺了一些」）。
            */
           const anchorIdAt = (wordIdx: number) => getAnchorId(lineIndex, wordIdx)
           const sentenceMask = clusterMask(segments, anchorIdAt, sentenceCover, true)
@@ -1188,28 +1183,15 @@ function LyricEditorInner({
               // 和句摘的 border-b 落在同一条水平线上，虚线整条被实线盖住。
               // 线型也各不相同：单词直实线、短语波浪线、句摘虚线，一眼可分。
               // 短语和句摘那两条是背景图不是下划线，缘由见文件开头。
-              // `breakBefore` 只落在紧接着前一簇的那一块上（index.css 的 .line-break-before）。
               const inner = phraseMask.cluster[segIdx] ? (
-                <span
-                  className={`${PHRASE_LINE_CLASS} ${
-                    phraseMask.breakBefore[segIdx] ? LINE_BREAK_CLASS : ''
-                  }`}
-                >
-                  {chunkElems}
-                </span>
+                <span className={PHRASE_LINE_CLASS}>{chunkElems}</span>
               ) : (
                 chunkElems
               )
               lineChildren.push(
                 <span
                   key={`chunk-${lineIndex}-${segIdx}`}
-                  className={
-                    sentenceMask.cluster[segIdx]
-                      ? `${SENTENCE_LINE_CLASS} ${
-                          sentenceMask.breakBefore[segIdx] ? LINE_BREAK_CLASS : ''
-                        }`
-                      : ''
-                  }
+                  className={sentenceMask.cluster[segIdx] ? SENTENCE_LINE_CLASS : ''}
                 >
                   {inner}
                 </span>
