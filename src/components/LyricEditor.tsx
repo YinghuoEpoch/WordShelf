@@ -1189,7 +1189,7 @@ function LyricEditorInner({
                   // ⚠️ 按下去那一下**不做过渡**，只在松开时淡出。从前一律 transition-colors（150ms），
                   // 轻点 80ms 就松手，底色还没变过来就开始退，看着像没反应
                   // （用户 2026-09-09：「你得接触一会才行，没那么灵敏」）。
-                  // 另一半在 useWordInteraction：轻点太快也让底色留够一小会儿再退。
+                  // 松手就开始淡出，不额外多留（试过留 160ms，用户说太久）。
                   className={`cursor-pointer rounded px-0.5 -mx-0.5 select-none touch-manipulation ${
                     isPressing ? '' : 'transition-colors'
                   } ${highlightClass} ${hasNote ? WORD_LINE_CLASS : ''}`}

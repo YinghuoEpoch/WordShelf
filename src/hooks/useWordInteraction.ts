@@ -4,11 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 const LONG_PRESS_MS = 450
 /** 手指允许的移动范围：超过就认为用户在滚动页面，取消长按 */
 const MOVE_TOLERANCE_PX = 10
-/**
- * 按压底色至少亮多久。轻点往往不到 100ms 就松手，底色刚亮就灭，看着像没反应 ——
- * 松手时不够这个数就再留一会儿。只对「松手」生效：手指滑走（在滚动）照旧立刻灭
- */
-const MIN_FLASH_MS = 160
 
 interface WordInteractionOptions {
   /** 当前没有选中任何词时，长按某个词：开始一次标记 */
@@ -65,49 +60,20 @@ export function useWordInteraction({
   /** 本次按压是否已经触发过长按（触发过就不再当作轻点处理） */
   const firedRef = useRef(false)
   const [pressingAnchorId, setPressingAnchorId] = useState<string | null>(null)
-  /** 这次按下去是什么时候，算底色亮够了没有 */
-  const pressedAtRef = useRef(0)
-  /** 轻点太快时把底色多留一会儿的那个计时器 */
-  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const clearFlash = useCallback(() => {
-    if (flashTimerRef.current) {
-      clearTimeout(flashTimerRef.current)
-      flashTimerRef.current = null
-    }
-  }, [])
-
+  /**
+   * 松手 / 滑走 / 取消都走这一条：底色立刻灭。
+   *
+   * 松手那一下的可见度靠 LyricEditor 那边「灭的时候才带 150ms 淡出」（亮是瞬时的）——
+   * 试过松手后再留 160ms 才灭，用户 2026-09-09 说「留的时间太久了」，去掉了。
+   */
   const cancelPress = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current)
       timerRef.current = null
     }
     startPosRef.current = null
-    clearFlash()
     setPressingAnchorId(null)
-  }, [clearFlash])
-
-  /**
-   * 松手：长按的表停掉，底色**留够 MIN_FLASH_MS 再灭**。
-   * 和 cancelPress 的差别只在底色 —— 滑走是「用户在滚动」，该立刻灭；松手是「点了一下」，该让人看见
-   */
-  const releasePress = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
-    startPosRef.current = null
-    const left = MIN_FLASH_MS - (Date.now() - pressedAtRef.current)
-    if (left <= 0) {
-      setPressingAnchorId(null)
-      return
-    }
-    clearFlash()
-    flashTimerRef.current = setTimeout(() => {
-      flashTimerRef.current = null
-      setPressingAnchorId(null)
-    }, left)
-  }, [clearFlash])
+  }, [])
 
   // 组件卸载时清掉未完成的计时器
   useEffect(() => cancelPress, [cancelPress])
@@ -119,8 +85,6 @@ export function useWordInteraction({
         if (e.button !== 0) return
         firedRef.current = false
         startPosRef.current = { x: e.clientX, y: e.clientY }
-        pressedAtRef.current = Date.now()
-        clearFlash()
         setPressingAnchorId(anchorId)
 
         if (timerRef.current) clearTimeout(timerRef.current)
@@ -143,7 +107,7 @@ export function useWordInteraction({
 
       onPointerUp: () => {
         const wasLongPress = firedRef.current
-        releasePress()
+        cancelPress()
         firedRef.current = false
         // 长按已经处理过了，松手不再重复触发
         if (wasLongPress) return
@@ -158,7 +122,7 @@ export function useWordInteraction({
       // 长按时浏览器默认会弹出「复制 / 选择」菜单，这里挡掉
       onContextMenu: (e: React.SyntheticEvent) => e.preventDefault()
     }),
-    [hasSelection, longPressMs, onLongPress, onTapWithSelection, onTap, cancelPress, releasePress, clearFlash]
+    [hasSelection, longPressMs, onLongPress, onTapWithSelection, onTap, cancelPress]
   )
 
   const interactionHint = hasSelection
