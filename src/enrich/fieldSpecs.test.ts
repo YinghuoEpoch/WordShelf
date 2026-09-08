@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { DEFINITION_SPEC, LEMMA_SPEC, POS_SPEC } from './fieldSpecs'
 import { buildSystemPrompt } from '../mark/openaiCompatible'
+import { DEFAULT_MARK_OPTIONS } from '../mark/options'
 import { WORD_SYSTEM_PROMPT } from './openaiCompatible'
 
 /**
@@ -45,7 +46,7 @@ describe('词尾 -s 不许一律当成复数', () => {
 })
 
 describe('填充和划词用的是同一份要求', () => {
-  const markPrompt = buildSystemPrompt({ level: 'cet4', amount: 'few' })
+  const markPrompt = buildSystemPrompt(DEFAULT_MARK_OPTIONS)
 
   it('词性那条两边都用上了 —— 从前只钉了释义和原形，词性漏在外面', () => {
     expect(markPrompt).toContain(POS_SPEC)

@@ -20,6 +20,7 @@ import {
   type PhraseTask
 } from '../enrich'
 import type { AutoFillState } from '../components/AutoFillDialog'
+import type { FillOptions } from '../enrich/fillOptions'
 
 /**
  * 「一键填充」的组织者。
@@ -70,7 +71,7 @@ export function useAutoFill({ appData, reviewTarget, writeAnnotation }: UseAutoF
   const annotations = useMemo(() => appData.annotations ?? [], [appData.annotations])
 
   /** 范围内所有还有格子没填的单词笔记，附上它所在那一行作为上下文 */
-  const wordTasks = useMemo<WordTask[]>(() => {
+  const allWordTasks = useMemo<WordTask[]>(() => {
     const inScope = new Set(scopePageIds)
     const linesOf = new Map<string, string[]>()
     const wordsOf = new Map<string, ReturnType<typeof buildWordList>>()
@@ -96,7 +97,7 @@ export function useAutoFill({ appData, reviewTarget, writeAnnotation }: UseAutoF
   }, [scopePageIds, annotations, appData.pages])
 
   /** 范围内所有还有格子没填的短语，同样带上它所在那一行 */
-  const phraseTasks = useMemo<PhraseTask[]>(() => {
+  const allPhraseTasks = useMemo<PhraseTask[]>(() => {
     const inScope = new Set(scopePageIds)
     const linesOf = new Map<string, string[]>()
     const wordsOf = new Map<string, ReturnType<typeof buildWordList>>()
@@ -121,7 +122,7 @@ export function useAutoFill({ appData, reviewTarget, writeAnnotation }: UseAutoF
     return tasks
   }, [scopePageIds, annotations, appData.pages])
 
-  const sentenceTasks = useMemo<SentenceTask[]>(() => {
+  const allSentenceTasks = useMemo<SentenceTask[]>(() => {
     const inScope = new Set(scopePageIds)
     return annotations
       .filter(
@@ -149,12 +150,20 @@ export function useAutoFill({ appData, reviewTarget, writeAnnotation }: UseAutoF
     abortRef.current?.abort()
   }, [])
 
-  const start = useCallback(() => {
+  /**
+   * @param options 填哪几类（用户 2026-09-08 加的：可以只填单词 / 短语 / 句子，也可以多选）。
+   *                没选的那一类连任务都不建，进度里的总数只算选中的
+   */
+  const start = useCallback((options: FillOptions) => {
     const enricher = createEnricher()
     if (!enricher) {
       setState((s) => ({ ...s, phase: 'error', message: '还没设好 AI —— 打开「AI 设置」填好 Key（自定义供应商还要填地址和模型名）' }))
       return
     }
+
+    const wordTasks = options.word ? allWordTasks : []
+    const phraseTasks = options.phrase ? allPhraseTasks : []
+    const sentenceTasks = options.sentence ? allSentenceTasks : []
 
     const controller = new AbortController()
     abortRef.current = controller
@@ -266,15 +275,15 @@ export function useAutoFill({ appData, reviewTarget, writeAnnotation }: UseAutoF
         abortRef.current = null
       }
     })()
-  }, [wordTasks, phraseTasks, sentenceTasks, writeAnnotation])
+  }, [allWordTasks, allPhraseTasks, allSentenceTasks, writeAnnotation])
 
   return {
     open,
     state,
     scopeName,
-    pendingWords: wordTasks.length,
-    pendingPhrases: phraseTasks.length,
-    pendingSentences: sentenceTasks.length,
+    pendingWords: allWordTasks.length,
+    pendingPhrases: allPhraseTasks.length,
+    pendingSentences: allSentenceTasks.length,
     openDialog,
     closeDialog,
     start,

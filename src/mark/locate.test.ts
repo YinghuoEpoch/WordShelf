@@ -139,3 +139,40 @@ describe('定位：报数如实', () => {
     expect(r.skipped).toHaveLength(2)
   })
 })
+
+/**
+ * 「划什么」按**定位出来的实际类别**过滤，不听 AI 自报的 kind ——
+ * 它说是短语却只给一个词的事常有，以它为准会把单词当短语丢掉。
+ */
+describe('只划一类', () => {
+  it('只要单词：对上的短语丢掉，如实记成 kind-excluded', () => {
+    const r = locateMarks(
+      content,
+      [pick({ line: 0, text: 'stood' }), pick({ line: 0, text: 'took off', kind: 'phrase' })],
+      new Set(),
+      { word: true, phrase: false }
+    )
+    expect(r.located.map((m) => m.text)).toEqual(['stood'])
+    expect(r.skipped).toEqual([expect.objectContaining({ reason: 'kind-excluded' })])
+  })
+
+  it('只要短语：单词丢掉', () => {
+    const r = locateMarks(
+      content,
+      [pick({ line: 0, text: 'stood' }), pick({ line: 0, text: 'took off', kind: 'phrase' })],
+      new Set(),
+      { word: false, phrase: true }
+    )
+    expect(r.located.map((m) => m.text)).toEqual(['took off'])
+    expect(r.skipped[0].reason).toBe('kind-excluded')
+  })
+
+  it('AI 说是短语但实际只占一个词：按单词算，只要单词时照样划上', () => {
+    const r = locateMarks(content, [pick({ line: 0, text: 'stood', kind: 'phrase' })], new Set(), {
+      word: true,
+      phrase: false
+    })
+    expect(r.located).toHaveLength(1)
+    expect(r.located[0].kind).toBe('word')
+  })
+})

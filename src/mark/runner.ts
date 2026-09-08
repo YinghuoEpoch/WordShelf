@@ -21,6 +21,8 @@ export interface MarkProgress {
   marked: number
   /** AI 挑了但没对上原文的条数 */
   missed: number
+  /** 对上了但不是这次要的那一类（只要单词它给了短语，或反过来） */
+  excluded: number
 }
 
 /**
@@ -65,7 +67,7 @@ export async function runMark({
   signal
 }: RunMarkOptions): Promise<MarkProgress> {
   const lines = buildMarkLines(content)
-  const progress: MarkProgress = { done: 0, total: lines.length, marked: 0, missed: 0 }
+  const progress: MarkProgress = { done: 0, total: lines.length, marked: 0, missed: 0, excluded: 0 }
   onProgress?.({ ...progress })
 
   for (const batch of chunk(lines, LINE_BATCH_SIZE)) {
@@ -73,14 +75,15 @@ export async function runMark({
 
     const picks = await marker.pick(batch, options, signal)
     // 定位对着**整篇正文**做，不是只对这一批的行 —— 行号是全篇的真实行号
-    const { located, skipped } = locateMarks(content, picks, markedSpellings)
+    const { located, skipped } = locateMarks(content, picks, markedSpellings, options.kinds)
     for (const m of located) markedSpellings.add(m.text.toLowerCase().replace(/['’]/g, ''))
 
     await onBatch(located)
 
     progress.done += batch.length
     progress.marked += located.length
-    progress.missed += skipped.length
+    progress.excluded += skipped.filter((s) => s.reason === 'kind-excluded').length
+    progress.missed += skipped.filter((s) => s.reason !== 'kind-excluded').length
     onProgress?.({ ...progress })
   }
 
