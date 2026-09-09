@@ -85,7 +85,10 @@ interface FlashDeckProps {
    * 沉浸时去掉。卡片的位置于是和顶栏在不在无关。
    */
   immersive: boolean
-  /** 底部让出导航栏的那段内边距，和卡片墙同一个式子 */
+  /**
+   * 底部让出导航栏的那段内边距。**要按导航栏本来多高让（--sa-bottom-real），不能按此刻多高** ——
+   * 沉浸时导航栏藏起来，此刻的值掉到 0，这一块长高、卡片下沉。缘由见 VocabularyDashboard 传它的地方
+   */
   paddingBottom: string
 }
 

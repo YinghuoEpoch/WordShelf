@@ -24,6 +24,8 @@ const MIN_TOP = 24
 
 /** 上一次「系统栏看得见的时候」状态栏有多高。见 apply() 里 --sa-top-real 的说明 */
 let lastRealTop = 0
+/** 上一次「系统栏看得见的时候」底下那条导航栏有多高。见 realBottomAfter */
+let lastRealBottom = 0
 /**
  * 系统栏此刻是不是**我们自己**藏起来的（沉浸阅读）。
  *
@@ -40,6 +42,19 @@ let barsHidden = false
  */
 export function realTopAfter(prev: number, reported: number, hidden: boolean): number {
   return reported > 0 && !hidden ? reported : prev
+}
+
+/**
+ * 底下那条导航栏**本来**多高（`--sa-bottom-real`），规则和顶上那条一样：藏着的期间不采信。
+ * 和顶上差一处：**放着时报 0 也采信** —— 手势导航的机器底下本来就可能是 0，那是真值不是没拿到。
+ *
+ * 要它的是复习页的抽卡（第一百节第三版）：卡片是竖着居中的，进沉浸时导航栏藏起来、
+ * `--sa-bottom` 掉到 0，底下让出的那条收回去，卡片就往下沉半截 —— 平板三颗导航键 48px，沉 24px，
+ * 用户一眼看出来（手机是手势条，矮，他没看出来）。抽卡底下一律按「本来多高」让，
+ * 于是那一块的高度和导航栏在不在、原生什么时候报上来都无关。
+ */
+export function realBottomAfter(prev: number, reported: number, hidden: boolean): number {
+  return hidden ? prev : reported
 }
 
 /**
@@ -193,6 +208,8 @@ function apply(
   s.setProperty('--sa-top-real', `${Math.max(lastRealTop, MIN_TOP)}px`)
   s.setProperty('--sa-right', `${right}px`)
   s.setProperty('--sa-bottom', `${bottom}px`)
+  lastRealBottom = realBottomAfter(lastRealBottom, bottom, barsHidden)
+  s.setProperty('--sa-bottom-real', `${lastRealBottom}px`)
   s.setProperty('--sa-bottom-tap', `${tappableBottom}px`)
   s.setProperty('--sa-left', `${left}px`)
   // 输入法有多高。从前是原生把整个窗口往上挤，三栏一起变矮；现在只报数，谁让谁自己让

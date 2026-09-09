@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { realTopAfter } from './safeArea'
+import { realBottomAfter, realTopAfter } from './safeArea'
 
 /**
  * 「状态栏本来多高」的更新规则。
@@ -23,5 +23,16 @@ describe('realTopAfter', () => {
   })
   it('放出来之后原生把 38 报回来：跟上（和藏之前一样，顶栏厚度不变）', () => {
     expect(realTopAfter(38, 38, false)).toBe(38)
+  })
+})
+
+describe('realBottomAfter（导航栏本来多高，抽卡底下按它让）', () => {
+  it('系统栏放着：报什么跟什么，报 0 也跟 —— 手势导航底下本来就是 0', () => {
+    expect(realBottomAfter(48, 48, false)).toBe(48)
+    expect(realBottomAfter(48, 0, false)).toBe(0)
+    expect(realBottomAfter(0, 48, false)).toBe(48)
+  })
+  it('系统栏藏着：报 0 不采信，导航栏本来的 48 留着 —— 平板上抽卡沉 24px 就是这一条修的', () => {
+    expect(realBottomAfter(48, 0, true)).toBe(48)
   })
 })
