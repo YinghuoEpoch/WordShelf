@@ -1301,11 +1301,17 @@ function LeftSidebarInner({
             className="relative flex h-14 w-full min-w-0 flex-col items-center justify-center gap-0.5 text-gray-600 transition-colors hover:bg-gray-100"
           >
             <Archive className="h-5 w-5 shrink-0" aria-hidden />
-            {/* 一颗按钮两样东西。字号是死的 11px，五个字加一道杠在 250px 宽的四分之一里放得下 */}
-            <span className="text-[11px] leading-none whitespace-nowrap">归档/回收站</span>
-            {trashCount > 0 && (
+            {/*
+              一颗按钮两样东西，但字只写「归档」—— 第一版写「归档/回收站」，用户：「五个字太离谱了」。
+              回收站是面板里的第二个页签，点开就看见。角标是面板里两样东西的总数。
+            */}
+            <span className="text-[11px] leading-none">归档</span>
+            {archivedBooks.length + archivedPages.length + trashCount > 0 && (
               <span className="absolute right-2 top-1.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-accent-500 px-1 text-[10px] font-medium text-white">
-                {trashCount > 99 ? '99+' : trashCount}
+                {(() => {
+                  const n = archivedBooks.length + archivedPages.length + trashCount
+                  return n > 99 ? '99+' : n
+                })()}
               </span>
             )}
           </button>
