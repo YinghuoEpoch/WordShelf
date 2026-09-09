@@ -759,6 +759,8 @@ function LyricEditorInner({
    * 长按取词本身不受影响。
    */
   const { speak, error: speechError, installVoice, dismissError } = useSpeak()
+  /** 正文里的单词什么时候念（设置 → 发音）：长按才念 / 点按也念 / 都不念 */
+  const { wordSpeak } = useSpeechPrefs()
 
   /** 长按取词：支持「词 → 句摘 → 修正范围」，始终使用底部抽屉 */
   const openWordDrawer = useCallback(
@@ -773,7 +775,8 @@ function LyricEditorInner({
         )
         setSelection({ type: 'word', anchorId, word })
         setFullMode('word') // 打开底部抽屉（音标 / 词性 / 释义）
-        speak(anchorId, word, { lookup: true })
+        // 「都不发音」（设置 → 发音）时这一下也不念；抽屉照开
+        if (wordSpeak !== 'off') speak(anchorId, word, { lookup: true })
         return
       }
 
@@ -796,7 +799,7 @@ function LyricEditorInner({
         openRange(startAnchorId, endAnchorId, getRangeText(startAnchorId, endAnchorId))
       }
     },
-    [selection, notes, normalizeRange, getRangeText, clearAll, openRange, speak]
+    [selection, notes, normalizeRange, getRangeText, clearAll, openRange, speak, wordSpeak]
   )
 
   /**
@@ -843,10 +846,9 @@ function LyricEditorInner({
   )
 
   /**
-   * 「点按单词发音」（设置 → 发音）。开着才把 onTap 给手势 hook —— 不给就是从前的样子：
-   * 没选中时轻点没反应。长按取词那条路一直会念，和这个开关无关。
+   * 「点按也发音」（设置 → 发音）时才把 onTap 给手势 hook —— 不给就是从前的样子：
+   * 没选中时轻点没反应。长按那一下念不念看上面 openWordDrawer 里那一句（「都不发音」时也不念）。
    */
-  const { tapToSpeak } = useSpeechPrefs()
   const speakOnTap = useCallback(
     (anchorId: string, word: string) => speak(anchorId, word, { lookup: true }),
     [speak]
@@ -854,7 +856,7 @@ function LyricEditorInner({
   const { getWordHandlers, pressingAnchorId, interactionHint } = useWordInteraction({
     onLongPress: openWordDrawer,
     onTapWithSelection: adjustSelection,
-    onTap: tapToSpeak ? speakOnTap : undefined,
+    onTap: wordSpeak === 'tap' ? speakOnTap : undefined,
     hasSelection: !!selection
   })
 
