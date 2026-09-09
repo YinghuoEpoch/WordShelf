@@ -91,6 +91,14 @@ export interface VocabularyDashboardProps {
   autoFillCount?: number
   /** 阅读设置。这里只用 `theme` —— 底色要和阅读页同一个 */
   readerSettings?: ReaderSettings
+  /**
+   * 沉浸（第一百节，用户 2026-09-09 要的：「复习模式也能像阅读模式那样收起顶栏」）。
+   * 进不进由 App 算（shouldImmerse，和阅读页同一套规则）；这里只管自己那条工具带
+   * 改成浮在上面、跟着顶栏一起出没，做法照抄 LyricEditor 那条带。抽卡的进度条也跟着收。
+   */
+  immersive?: boolean
+  /** 沉浸态下这会儿顶栏露没露出来 */
+  chromeVisible?: boolean
   [key: string]: any
 }
 
@@ -106,8 +114,12 @@ function VocabularyDashboardInner({
   autoFillOpen = false,
   autoFillCount = 0,
   onDeleteAnnotations,
-  readerSettings = { fontSize: 18, fontFamily: 'sans', theme: 'pure', accent: 'amber' }
+  readerSettings = { fontSize: 18, fontFamily: 'sans', theme: 'pure', accent: 'amber' },
+  immersive = false,
+  chromeVisible = false
 }: VocabularyDashboardProps) {
+  /** 顶栏那一套此刻收着：工具带、抽卡的进度条跟着一起收 */
+  const chromeHidden = immersive && !chromeVisible
   const themeStyles = readerThemeStyles(readerSettings.theme)
   const [hideEnglish, setHideEnglish] = useState(false)
   const [hideChinese, setHideChinese] = useState(false)
@@ -350,9 +362,23 @@ function VocabularyDashboardInner({
   }
 
   return (
-    <div className={`flex-1 flex flex-col min-h-0 overflow-hidden ${themeStyles.bg}`}>
-      {/* 背诵遮罩开关 + 词/句切换 */}
-      <div className={`${BAND_SUB} flex-wrap bg-white/80`}>
+    <div className={`relative flex-1 flex flex-col min-h-0 overflow-hidden ${themeStyles.bg}`}>
+      {/*
+        背诵遮罩开关 + 词/句切换。
+        沉浸态里这条带浮在卡片上面、不占位置，跟着顶栏一起出没 —— `top` 是状态栏那一截加标题栏 44px，
+        缘由和 LyricEditor 那条带同一份。`data-review-chrome`：点在带子的空处不算点空白
+      */}
+      <div
+        className={`${BAND_SUB} flex-wrap ${
+          immersive
+            ? `absolute inset-x-0 top-[calc(var(--sa-top-real)+2.75rem)] z-20 bg-white transition-opacity duration-200 ${
+                chromeVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              }`
+            : 'bg-white/80'
+        }`}
+        aria-hidden={chromeHidden}
+        data-review-chrome=""
+      >
         <div className="flex flex-wrap items-center gap-2">
           {/* 图标 + 单字，比「隐藏英文」四个字省一半宽度，四种遮罩状态都还在 */}
           <button
@@ -478,6 +504,7 @@ function VocabularyDashboardInner({
           onUpdateSentence={onUpdateSentence}
           initialIndex={loadFlashPosition(flashKey, deck.length)}
           onIndexChange={rememberFlashIndex}
+          chromeHidden={chromeHidden}
           canSpeak={canSpeak}
           speakingId={speakingId}
           onSpeak={(c) => (c.kind === 'vocab' ? speak(c.id, c.word, { lookup: true }) : speak(c.id, c.text))}
@@ -722,6 +749,7 @@ function VocabCard({
   return (
     <div
       className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm transition-all min-h-[100px]"
+      data-review-card=""
       onClick={(e) => {
         // 点在输入框 / 按钮上时不要连带翻开答案
         if ((e.target as HTMLElement).closest('input, textarea, button, select, a')) return
@@ -906,6 +934,7 @@ function SentenceCard({
   return (
     <div
       className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm transition-all min-h-[100px]"
+      data-review-card=""
       onClick={(e) => {
         // 点在输入框 / 按钮上时不要连带翻开答案
         if ((e.target as HTMLElement).closest('input, textarea, button, select, a')) return

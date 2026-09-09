@@ -8,9 +8,9 @@ export const CHROME_AUTO_HIDE_MS = 3000
 export interface ImmersiveConditions {
   /** 够不够宽（1024 起）。宽窄两套的**触发方式**不一样，见 shouldImmerse */
   isWide: boolean
-  /** 阅读还是复习 */
+  /** 阅读还是复习。**两种都能进**（复习那边是用户 2026-09-09 要的，第一百节） */
   mode: 'read' | 'review'
-  /** 是不是正在编辑全文 */
+  /** 是不是正在编辑：阅读页的「编辑全文」、复习页的铅笔，哪个模式看哪个 */
   editMode: boolean
   /** 左边那栏收起来了没有（只在宽屏下有意义） */
   leftHidden: boolean
@@ -34,12 +34,14 @@ export interface ImmersiveConditions {
  *   再点一下才回来。窄屏上侧栏本来就总是收着的，拿它当信号会变成一直沉浸；
  *   而且手机上顶栏是唯一的出口（侧栏、笔记都从那儿开），不能让它自作主张地消失。
  *
- * 三条共同的否决项是「这时候你需要那些按钮」：复习模式要编辑键、编辑全文要工具栏、
+ * 两条共同的否决项是「这时候你需要那些按钮」：编辑（全文或复习页的铅笔）要工具栏、
  * 侧栏开着说明用户正在用界面。弹窗不必单列 —— 设置在左栏里、AI 那几个从右栏开，
  * 开着的时候必有一侧栏是放出来的。
+ *
+ * **复习模式从前一律不进**（理由是「那边要用编辑键」）。用户 2026-09-09 要复习页也能沉浸，
+ * 于是复习和阅读同一套规则，编辑键那条归到 editMode 里（复习页传的是铅笔的状态）。
  */
 export function shouldImmerse(c: ImmersiveConditions): boolean {
-  if (c.mode !== 'read') return false
   if (c.editMode) return false
   if (c.panelOpen) return false
   return c.isWide ? c.leftHidden : c.narrowOn

@@ -74,6 +74,8 @@ interface FlashDeckProps {
   initialIndex: number
   /** 翻到第几张了，外面拿去记 */
   onIndexChange: (index: number) => void
+  /** 沉浸态下顶栏收着：进度条跟着一起收（用户定的），位置留着不动、只是看不见 */
+  chromeHidden: boolean
   /** 底部让出导航栏的那段内边距，和卡片墙同一个式子 */
   paddingBottom: string
 }
@@ -128,6 +130,7 @@ export function FlashDeck({
   onExit,
   initialIndex,
   onIndexChange,
+  chromeHidden,
   paddingBottom
 }: FlashDeckProps) {
   /** 第几张；等于 cards.length 时是「过完了」那一屏 */
@@ -312,21 +315,35 @@ export function FlashDeck({
         )}
       </div>
 
-      <Scrubber total={total} index={index} onJump={jump} />
+      <Scrubber total={total} index={index} onJump={jump} hidden={chromeHidden} />
     </div>
   )
 }
 
 /**
- * 底下那条进度条：一条细线、一颗圆点。拖圆点或点线上任意一处直接跳到那张，卡片实时跟着换。
- * 用户 2026-09-09 要的：「卡片有那么多，把箭头换成横着的进度条，可以通过滑动快速移动位置」。
+ * 底下那条进度条：**播放器那种** —— 一条 2px 的细线，手指按上去圆点才出现、松手就没。
+ * 拖或点线上任意一处直接跳到那张，卡片实时跟着换。
+ * 用户 2026-09-09 要的：「卡片有那么多，把箭头换成横着的进度条，可以通过滑动快速移动位置」；
+ * 第一版常驻一颗 20px 的圆点，他说不好看，三个方向里选了这个。
  *
  * 不用 <input type="range">：各家浏览器的样子不一样、拇指那颗点在安卓上偏小，自己画三个 div 更省事。
- * 整条带子高 44px 好按，线本身只有 3px。
+ * 整条带子高 44px 好按，线本身只有 2px。沉浸态下跟着顶栏一起收（位置留着，只是看不见）。
  */
-function Scrubber({ total, index, onJump }: { total: number; index: number; onJump: (i: number) => void }) {
+function Scrubber({
+  total,
+  index,
+  onJump,
+  hidden
+}: {
+  total: number
+  index: number
+  onJump: (i: number) => void
+  hidden: boolean
+}) {
   const track = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
+  /** 手指正按着：圆点这会儿才画出来 */
+  const [active, setActive] = useState(false)
 
   const jumpAt = useCallback(
     (clientX: number) => {
@@ -339,9 +356,16 @@ function Scrubber({ total, index, onJump }: { total: number; index: number; onJu
 
   const pct = thumbPercent(index, total)
 
+  const release = () => {
+    dragging.current = false
+    setActive(false)
+  }
+
   return (
     <div
-      className="shrink-0 px-8 pb-2 select-none"
+      className={`shrink-0 px-8 pb-2 select-none transition-opacity duration-200 ${
+        hidden ? 'opacity-0 pointer-events-none' : 'opacity-100'
+      }`}
       /* 整条都归手指：横着拖是在挑卡，不让页面抢去滚 */
       style={{ touchAction: 'none' }}
       role="slider"
@@ -349,9 +373,11 @@ function Scrubber({ total, index, onJump }: { total: number; index: number; onJu
       aria-valuemin={1}
       aria-valuemax={total}
       aria-valuenow={Math.min(index + 1, total)}
+      aria-hidden={hidden}
       onPointerDown={(e) => {
         if (e.pointerType === 'mouse' && e.button !== 0) return
         dragging.current = true
+        setActive(true)
         try {
           e.currentTarget.setPointerCapture?.(e.pointerId)
         } catch {
@@ -362,19 +388,18 @@ function Scrubber({ total, index, onJump }: { total: number; index: number; onJu
       onPointerMove={(e) => {
         if (dragging.current) jumpAt(e.clientX)
       }}
-      onPointerUp={() => {
-        dragging.current = false
-      }}
-      onPointerCancel={() => {
-        dragging.current = false
-      }}
+      onPointerUp={release}
+      onPointerCancel={release}
     >
       <div ref={track} className="relative h-11 flex items-center">
-        <div className="absolute inset-x-0 h-[3px] rounded-full bg-stone-200" />
-        <div className="absolute left-0 h-[3px] rounded-full bg-accent-400" style={{ width: `${pct}%` }} />
+        <div className="absolute inset-x-0 h-[2px] rounded-full bg-stone-200" />
+        <div className="absolute left-0 h-[2px] rounded-full bg-accent-500" style={{ width: `${pct}%` }} />
+        {/* 圆点只在按着的时候有：松手就没，平时只剩那条线 */}
         <div
-          className="absolute w-5 h-5 rounded-full bg-white border-2 border-accent-500 shadow-sm"
-          style={{ left: `calc(${pct}% - 10px)` }}
+          className={`absolute w-4 h-4 rounded-full bg-accent-500 shadow-sm transition-opacity duration-150 ${
+            active ? 'opacity-100' : 'opacity-0'
+          }`}
+          style={{ left: `calc(${pct}% - 8px)` }}
         />
       </div>
     </div>
@@ -456,6 +481,7 @@ function FlashCardView({
   return (
     <div
       className="rounded-2xl border border-stone-200 bg-white shadow-sm p-6 sm:p-8 min-h-[220px] flex flex-col"
+      data-review-card=""
       onClick={(e) => {
         if ((e.target as HTMLElement).closest('input, textarea, button, select, a')) return
         setRevealed((v) => !v)
