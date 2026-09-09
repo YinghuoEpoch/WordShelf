@@ -399,6 +399,8 @@ function LyricEditorInner({
    * 手机上一个字不变。垫子的加减和容器上沿的挪动**合在一趟**补进 scrollTop（下面那个 effect）。
    */
   const chromePad = immersive && chromeVisible
+  // 宽窄两套补偿规则要用它（下面那个 effect）。从前声明在后面的取词小窗那段，挪到这儿，钩子顺序不变
+  const isWide = useIsWide()
   const containerTopRef = useRef<number | null>(null)
   const containerPadRef = useRef<number | null>(null)
   useLayoutEffect(() => {
@@ -412,10 +414,18 @@ function LyricEditorInner({
     if (prev === null || padPrev === null) return
     const newTop = el.getBoundingClientRect().top
     /*
-      上沿挪了多少 + 垫子变了多少，加在一起补一次。宽屏进沉浸时顶栏先露着：上沿 -C、垫子 +C，
-      合起来 0，文首附近也不会被 scrollTop 的 0 夹住；顶栏自动收掉时只剩 -C，文首附近会动一下，他接受
+      **宽窄两套（用户 2026-09-10 定的，第一百零四节）：**
+
+      - **窄屏**：上沿挪了多少就反向补多少 —— 顶栏像盖在正文上滑进滑出，正文在屏幕上不动（第八十二节 B）
+      - **宽屏**：**不补**。顶栏露着的时候它就当自己在文档流里（垫子 = 它的高度）：收起侧栏那一刻上沿 -C、垫子 +C，
+        正文本来就不动，「好像只是向左平移了」；顶栏消失垫子撤掉，正文**跳上去补位**；点空白把顶栏叫回来，
+        正文往下让开、不被盖。他的原话：「等顶栏消失，正文再跳上去」。第一百零三节那版把这两下也补掉了，
+        结果顶栏叫回来时盖在正文上，「我得往下拉或点一下空白处才看得到顶部」
+
+      宽屏上也不是一律 0：退出沉浸时顶栏收着的话上沿 +C、垫子 0 —— 那时候顶栏回到流里正文往下让，正是在流里的样子，
+      所以宽屏一律不补是对的
     */
-    const delta = newTop - prev + (padNow - padPrev)
+    const delta = isWide ? 0 : newTop - prev + (padNow - padPrev)
     const scrollBefore = el.scrollTop
     if (Math.abs(delta) > 0.5) el.scrollTop += delta
 
@@ -463,7 +473,7 @@ function LyricEditorInner({
     sample(0)
     const timers = [150, 500, 1200].map((ms) => setTimeout(() => sample(ms), ms))
     return () => timers.forEach(clearTimeout)
-  }, [immersive, chromePad])
+  }, [immersive, chromePad, isWide])
   useLayoutEffect(() => {
     containerTopRef.current = scrollContainerRef.current?.getBoundingClientRect().top ?? null
   })
@@ -552,7 +562,6 @@ function LyricEditorInner({
    *
    * 窄屏（手机、平板竖屏）一律还是底部抽屉，那套是验熟的。
    */
-  const isWide = useIsWide()
   /**
    * 键盘弹起来时，屏幕能用的那一块变矮了 —— 下面摆小窗时要按这个算。
    * 不算的话：长按屏幕下半部分的词，小窗正好落在键盘底下，
