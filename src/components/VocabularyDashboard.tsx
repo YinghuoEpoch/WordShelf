@@ -11,7 +11,7 @@ import type {
 import { annotationToSentence } from '../utils/annotationViews'
 import { sortByText } from '../utils/annotationOrder'
 import { AutoMark } from './AutoMark'
-import { BAND_SUB } from './chrome'
+import { BAND_SUB, CHROME_STACK } from './chrome'
 import { readerThemeStyles } from './theme'
 import { isOnShelf } from '../utils/shelf'
 import { EditedMark } from './EditedMark'
@@ -120,23 +120,37 @@ function VocabularyDashboardInner({
 }: VocabularyDashboardProps) {
   /** 顶栏那一套此刻收着：工具带跟着收 */
   const chromeHidden = immersive && !chromeVisible
+  /**
+   * 沉浸里顶栏露着（宽屏点空白叫出来的那 3 秒）：卡片墙的开头垫一段顶栏那么高，
+   * 滚到顶时第一排卡在浮着的顶栏底下露出来（第一百零三节，用户要的「像手机那样」）。
+   * 只在露着时垫，收了就撤 —— 他在两个方案里选的这个。窄屏沉浸里顶栏从不露，这一格恒为 false
+   */
+  const chromePad = immersive && chromeVisible
 
   /**
-   * 顶栏进出时卡片墙在屏幕上不动 —— 照抄 LyricEditor 那一段（第八十二节，他选的 B）。
+   * 顶栏进出、垫子加减时卡片墙在屏幕上不动 —— 照抄 LyricEditor 那一段（第八十二节，他选的 B）。
    * 进沉浸时上面两条带离开文档流，这个滚动容器的上沿往上挪一截，里面的卡整块跟着往上顶；
-   * 上沿挪了多少 scrollTop 就反向补多少。滚到文首附近补不到负数，那一下会动，无妨。
+   * 上沿挪了多少、上内边距变了多少，**加在一起** scrollTop 反向补多少 —— 两样常常同一趟发生
+   * （宽屏进沉浸时顶栏先露着：上沿 -C、垫子 +C，合起来是 0），分开补会在文首附近被 0 夹住一次。
+   * 滚到文首附近补不到负数，那一下会动，无妨（顶栏自动收掉时正是这种，他接受）。
    * 读「以前在哪」只能靠上一次提交记下的值，所以下面那个无依赖的 effect **必须排在后面**。
-   * 抽卡那边没有滚动，走的是另一条路（FlashDeck 的 immersive）。
+   * 抽卡那边没有滚动，走的是另一条路（FlashDeck 的 immersive / chromeVisible）。
    */
   const wallRef = useRef<HTMLDivElement>(null)
   const wallTopRef = useRef<number | null>(null)
+  const wallPadRef = useRef<number | null>(null)
   useLayoutEffect(() => {
     const el = wallRef.current
+    if (!el) return
+    const padNow = parseFloat(getComputedStyle(el).paddingTop) || 0
+    const padPrev = wallPadRef.current
+    wallPadRef.current = padNow
     const prev = wallTopRef.current
-    if (!el || prev === null) return
-    const delta = el.getBoundingClientRect().top - prev
+    if (prev === null || padPrev === null) return
+    // 宽窄一样，缘由见 LyricEditor 同一处（第一百零五节：中间试过「宽屏不补」被否，文首那一下的跳是 0 夹出来的，正是他要的）
+    const delta = el.getBoundingClientRect().top - prev + (padNow - padPrev)
     if (Math.abs(delta) > 0.5) el.scrollTop += delta
-  }, [immersive])
+  }, [immersive, chromePad])
   useLayoutEffect(() => {
     wallTopRef.current = wallRef.current?.getBoundingClientRect().top ?? null
   })
@@ -524,6 +538,7 @@ function VocabularyDashboardInner({
           initialIndex={loadFlashPosition(flashKey, deck.length)}
           onIndexChange={rememberFlashIndex}
           immersive={immersive}
+          chromeVisible={chromeVisible}
           canSpeak={canSpeak}
           speakingId={speakingId}
           onSpeak={(c) => (c.kind === 'vocab' ? speak(c.id, c.word, { lookup: true }) : speak(c.id, c.text))}
@@ -541,7 +556,10 @@ function VocabularyDashboardInner({
       <div
         ref={wallRef}
         className="flex-1 min-h-0 overflow-y-auto scroll-area p-6"
-        style={{ paddingBottom: 'calc(1.5rem + var(--sa-bottom))' }}
+        style={{
+          paddingBottom: 'calc(1.5rem + var(--sa-bottom))',
+          paddingTop: chromePad ? `calc(1.5rem + ${CHROME_STACK})` : undefined
+        }}
       >
         {displayCount === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-ink-muted">

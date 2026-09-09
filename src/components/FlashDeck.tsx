@@ -3,6 +3,7 @@ import { AutoMark } from './AutoMark'
 import { AutoTextarea } from './AutoTextarea'
 import { SpeakButton } from './SpeakButton'
 import { DIRECTION_SLOP, isHorizontalSwipe } from './SwipeToDelete'
+import { CHROME_STACK } from './chrome'
 import type { ContextSentence } from '../utils/contextSentence'
 import type { Sentence, WordNote } from '../types'
 
@@ -86,6 +87,12 @@ interface FlashDeckProps {
    */
   immersive: boolean
   /**
+   * 沉浸态里顶栏这会儿露着（宽屏点空白叫出来的那 3 秒）。
+   * 露着的时候卡片区上下**各**垫一段顶栏那么高：中点不变、卡片不动，
+   * 但高卡片的上沿会被推到浮着的顶栏底下露出来（用户 2026-09-09 要的「像手机那样」）。
+   */
+  chromeVisible: boolean
+  /**
    * 底部让出导航栏的那段内边距。**要按导航栏本来多高让（--sa-bottom-real），不能按此刻多高** ——
    * 沉浸时导航栏藏起来，此刻的值掉到 0，这一块长高、卡片下沉。缘由见 VocabularyDashboard 传它的地方
    */
@@ -94,12 +101,6 @@ interface FlashDeckProps {
 
 /** 划过这么远（px），松手就换下一张 */
 export const SWIPE_PX = 64
-
-/**
- * 顶栏那一套平时占多高：状态栏（--sa-top-real，状态栏**本来**多高）+ 标题栏 44px（BAND_TOP）+ 工具带 40px（BAND_SUB）。
- * 和 LyricEditor 那条带浮起来时的 `top` 用的是同一组数，改带子高度记得一起改
- */
-export const CHROME_HEIGHT = 'var(--sa-top-real) + 2.75rem + 2.5rem'
 
 /** 手指走了 dx，卡片跟着挪多少：过了触发线之后越拉越沉，别让卡片飞出屏幕 */
 export function dragOffset(dx: number, trigger = SWIPE_PX): number {
@@ -149,6 +150,7 @@ export function FlashDeck({
   initialIndex,
   onIndexChange,
   immersive,
+  chromeVisible,
   paddingBottom
 }: FlashDeckProps) {
   /** 第几张；等于 cards.length 时是「过完了」那一屏 */
@@ -266,9 +268,16 @@ export function FlashDeck({
         /*
           平时垫一段底边距 = py-4 自己的 1rem + 状态栏 + 标题栏 44px + 工具带 40px，把卡片抬到「收起顶栏后的屏幕中点」；
           沉浸时那一套不占位置了，垫的也去掉、回到 py-4 的 1rem —— 两种状态下卡片一个像素都不挪。缘由见 immersive 那条 prop。
-          ⚠️ 那 1rem 必须算进去：第一版漏了，沉浸时 py-4 还在、平时被行内样式盖掉，量出来差 8px
+          ⚠️ 那 1rem 必须算进去：第一版漏了，沉浸时 py-4 还在、平时被行内样式盖掉，量出来差 8px。
+          沉浸里顶栏露着那会儿上下各垫同一段：中点还是那个中点，只是高卡片的上沿会落到顶栏底下
         */
-        style={{ paddingBottom: immersive ? undefined : `calc(1rem + ${CHROME_HEIGHT})` }}
+        style={
+          immersive
+            ? chromeVisible
+              ? { paddingTop: `calc(1rem + ${CHROME_STACK})`, paddingBottom: `calc(1rem + ${CHROME_STACK})` }
+              : undefined
+            : { paddingBottom: `calc(1rem + ${CHROME_STACK})` }
+        }
       >
         {card ? (
           <div

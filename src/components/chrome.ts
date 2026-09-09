@@ -29,3 +29,13 @@ export const BAND_TOP =
 /** 第二带：模式 / 动作。40px */
 export const BAND_SUB =
   'shrink-0 flex items-center justify-between gap-2 min-h-10 px-3 border-b border-paper-border'
+
+/**
+ * 顶栏那一套平时占多高（CSS 表达式，塞进 calc 里用）：
+ * 状态栏本来多高（--sa-top-real）+ 第一带 44px + 第二带 40px。
+ *
+ * 三处共用：抽卡把卡片放在「收起顶栏后的屏幕中点」要它；沉浸态里顶栏浮出来那会儿，
+ * 正文 / 卡片墙 / 抽卡给开头垫的那段也是它（第一百零三节，用户要的「像手机那样」能看见第一行）。
+ * 改带子高度记得一起改。
+ */
+export const CHROME_STACK = 'var(--sa-top-real) + 2.75rem + 2.5rem'
