@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BookOpen, FileText, Eye, EyeOff, Sparkles, Layers, LayoutGrid } from 'lucide-react'
 import type {
@@ -91,6 +91,14 @@ export interface VocabularyDashboardProps {
   autoFillCount?: number
   /** 阅读设置。这里只用 `theme` —— 底色要和阅读页同一个 */
   readerSettings?: ReaderSettings
+  /**
+   * 沉浸（第一百节，用户 2026-09-09 要的：「复习模式也能像阅读模式那样收起顶栏」）。
+   * 进不进由 App 算（shouldImmerse，和阅读页同一套规则）；这里只管自己那条工具带
+   * 改成浮在上面、跟着顶栏一起出没，做法照抄 LyricEditor 那条带。抽卡的进度条也跟着收。
+   */
+  immersive?: boolean
+  /** 沉浸态下这会儿顶栏露没露出来 */
+  chromeVisible?: boolean
   [key: string]: any
 }
 
@@ -106,15 +114,40 @@ function VocabularyDashboardInner({
   autoFillOpen = false,
   autoFillCount = 0,
   onDeleteAnnotations,
-  readerSettings = { fontSize: 18, fontFamily: 'sans', theme: 'pure', accent: 'amber' }
+  readerSettings = { fontSize: 18, fontFamily: 'sans', theme: 'pure', accent: 'amber' },
+  immersive = false,
+  chromeVisible = false
 }: VocabularyDashboardProps) {
+  /** 顶栏那一套此刻收着：工具带跟着收 */
+  const chromeHidden = immersive && !chromeVisible
+
+  /**
+   * 顶栏进出时卡片墙在屏幕上不动 —— 照抄 LyricEditor 那一段（第八十二节，他选的 B）。
+   * 进沉浸时上面两条带离开文档流，这个滚动容器的上沿往上挪一截，里面的卡整块跟着往上顶；
+   * 上沿挪了多少 scrollTop 就反向补多少。滚到文首附近补不到负数，那一下会动，无妨。
+   * 读「以前在哪」只能靠上一次提交记下的值，所以下面那个无依赖的 effect **必须排在后面**。
+   * 抽卡那边没有滚动，走的是另一条路（FlashDeck 的 immersive）。
+   */
+  const wallRef = useRef<HTMLDivElement>(null)
+  const wallTopRef = useRef<number | null>(null)
+  useLayoutEffect(() => {
+    const el = wallRef.current
+    const prev = wallTopRef.current
+    if (!el || prev === null) return
+    const delta = el.getBoundingClientRect().top - prev
+    if (Math.abs(delta) > 0.5) el.scrollTop += delta
+  }, [immersive])
+  useLayoutEffect(() => {
+    wallTopRef.current = wallRef.current?.getBoundingClientRect().top ?? null
+  })
   const themeStyles = readerThemeStyles(readerSettings.theme)
   const [hideEnglish, setHideEnglish] = useState(false)
   const [hideChinese, setHideChinese] = useState(false)
   const [reviewMode, setReviewMode] = useState<'vocab' | 'sentence'>('vocab')
   /**
    * 抽卡：一次只看一张（用户 2026-09-09 要的，见 FlashDeck）。
-   * 换一篇、切词/句退回卡片墙；**编辑模式不退** —— 卡上的格子直接能改（第二版，用户要的）。
+   * 换一篇退回卡片墙；**切词/句不退**（第三版，用户报的：「切换词句它会退回列表」），
+   * 换成另一叠、从那一叠记下的位置接着翻；**编辑模式也不退** —— 卡上的格子直接能改（第二版）。
    */
   const [flashcards, setFlashcards] = useState(false)
   /** 左滑露出删除的那张卡。同时只开一张，不然满屏都是红按钮 */
@@ -273,7 +306,7 @@ function VocabularyDashboardInner({
   useBackHandler(flashcards, BackPriority.flashcards, () => setFlashcards(false))
   useEffect(() => {
     setFlashcards(false)
-  }, [reviewTarget?.id, reviewMode])
+  }, [reviewTarget?.id])
 
   /**
    * 抽卡上的原句：按文档缓存分好的词表，正文没改就不重算。
@@ -349,9 +382,23 @@ function VocabularyDashboardInner({
   }
 
   return (
-    <div className={`flex-1 flex flex-col min-h-0 overflow-hidden ${themeStyles.bg}`}>
-      {/* 背诵遮罩开关 + 词/句切换 */}
-      <div className={`${BAND_SUB} flex-wrap bg-white/80`}>
+    <div className={`relative flex-1 flex flex-col min-h-0 overflow-hidden ${themeStyles.bg}`}>
+      {/*
+        背诵遮罩开关 + 词/句切换。
+        沉浸态里这条带浮在卡片上面、不占位置，跟着顶栏一起出没 —— `top` 是状态栏那一截加标题栏 44px，
+        缘由和 LyricEditor 那条带同一份。`data-review-chrome`：点在带子的空处不算点空白
+      */}
+      <div
+        className={`${BAND_SUB} flex-wrap ${
+          immersive
+            ? `absolute inset-x-0 top-[calc(var(--sa-top-real)+2.75rem)] z-20 bg-white transition-opacity duration-200 ${
+                chromeVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              }`
+            : 'bg-white/80'
+        }`}
+        aria-hidden={chromeHidden}
+        data-review-chrome=""
+      >
         <div className="flex flex-wrap items-center gap-2">
           {/* 图标 + 单字，比「隐藏英文」四个字省一半宽度，四种遮罩状态都还在 */}
           <button
@@ -477,6 +524,7 @@ function VocabularyDashboardInner({
           onUpdateSentence={onUpdateSentence}
           initialIndex={loadFlashPosition(flashKey, deck.length)}
           onIndexChange={rememberFlashIndex}
+          immersive={immersive}
           canSpeak={canSpeak}
           speakingId={speakingId}
           onSpeak={(c) => (c.kind === 'vocab' ? speak(c.id, c.word, { lookup: true }) : speak(c.id, c.text))}
@@ -486,6 +534,7 @@ function VocabularyDashboardInner({
         />
       ) : (
       <div
+        ref={wallRef}
         className="flex-1 min-h-0 overflow-y-auto scroll-area p-6"
         style={{ paddingBottom: 'calc(1.5rem + var(--sa-bottom))' }}
       >
@@ -721,6 +770,7 @@ function VocabCard({
   return (
     <div
       className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm transition-all min-h-[100px]"
+      data-review-card=""
       onClick={(e) => {
         // 点在输入框 / 按钮上时不要连带翻开答案
         if ((e.target as HTMLElement).closest('input, textarea, button, select, a')) return
@@ -905,6 +955,7 @@ function SentenceCard({
   return (
     <div
       className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm transition-all min-h-[100px]"
+      data-review-card=""
       onClick={(e) => {
         // 点在输入框 / 按钮上时不要连带翻开答案
         if ((e.target as HTMLElement).closest('input, textarea, button, select, a')) return

@@ -1345,7 +1345,8 @@ export default function App() {
   const immersive = shouldImmerse({
     isWide,
     mode,
-    editMode,
+    // 「正在编辑」看的是当前模式自己的那个开关：阅读页是编辑全文，复习页是铅笔
+    editMode: mode === 'read' ? editMode : reviewEditMode,
     leftHidden: wideLeftHidden,
     panelOpen: activePanel !== null,
     narrowOn: narrowImmersive
@@ -1595,13 +1596,19 @@ export default function App() {
         <main
           className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden relative"
           onClick={(e) => {
-            // 复习页和编辑全文里这一下什么都不做 —— 那两处沉浸本来就进不去，
-            // 在那儿悄悄翻开关，等回到阅读页顶栏会莫名其妙地不见了
-            if (mode !== 'read' || editMode) return
+            // 正在编辑（阅读页的编辑全文、复习页的铅笔）这一下什么都不做 —— 那时候沉浸进不去，
+            // 在那儿悄悄翻开关，等退出编辑顶栏会莫名其妙地不见了
+            if (mode === 'read' ? editMode : reviewEditMode) return
             const target = e.target as HTMLElement | null
             if (!target) return
             if (target.closest('button, a, input, textarea, select, label')) return
             if (target.closest('[data-word-span="true"]')) return
+            /*
+              复习页（第一百节）：卡片、那条工具带、抽卡的进度条都不算空白 ——
+              点卡片是翻开答案，点带子上的空处不该把带子自己收掉，进度条整条都归手指。
+              空白 = 卡片之间的空隙、抽卡里卡片以外的地方
+            */
+            if (target.closest('[data-review-card], [data-review-chrome], [role="slider"]')) return
             if (document.querySelector('[data-full-popup="true"]')) return
 
             if (isWide) {
@@ -1720,6 +1727,8 @@ export default function App() {
             onDeleteAnnotations={handleDeleteAnnotationsById}
             onOpenAutoFill={autoFill.openDialog}
             readerSettings={readerSettings}
+            immersive={immersive}
+            chromeVisible={chromeVisible}
             autoFillOpen={autoFill.open}
             autoFillCount={autoFill.pendingWords + autoFill.pendingPhrases + autoFill.pendingSentences}
           />

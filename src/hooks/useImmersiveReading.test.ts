@@ -72,8 +72,9 @@ describe('两种宽度都否决的情形', () => {
     ['宽屏', 宽屏沉浸],
     ['窄屏', 窄屏沉浸]
   ] as const) {
-    it(`${名字}：复习模式不进 —— 那边要用编辑键`, () => {
-      expect(shouldImmerse({ ...底子, mode: 'review' })).toBe(false)
+    it(`${名字}：复习模式也进（用户 2026-09-09 要的），但复习页的编辑模式不进 —— 铅笔要一直在`, () => {
+      expect(shouldImmerse({ ...底子, mode: 'review' })).toBe(true)
+      expect(shouldImmerse({ ...底子, mode: 'review', editMode: true })).toBe(false)
     })
 
     it(`${名字}：编辑全文时不进 —— 那边要用工具栏`, () => {
