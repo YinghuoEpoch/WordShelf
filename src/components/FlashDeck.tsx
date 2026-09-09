@@ -74,14 +74,29 @@ interface FlashDeckProps {
   initialIndex: number
   /** 翻到第几张了，外面拿去记 */
   onIndexChange: (index: number) => void
-  /** 沉浸态下顶栏收着：进度条跟着一起收（用户定的），位置留着不动、只是看不见 */
-  chromeHidden: boolean
+  /**
+   * 沉浸态（顶栏那一套离开了文档流）。
+   *
+   * 这里只用它做一件事：**让卡片在两种状态下都停在同一个位置**。进沉浸时上面那两条带
+   * （加状态栏）走了，这一块往上长一截，居中的卡片就会往下跳半截；退出时又跳回来。
+   * 抽卡没有滚动可补偿（阅读页是补 scrollTop），所以用户 2026-09-09 定的办法是：
+   * 平时就把卡片放在「收起顶栏后的屏幕中点」—— 比这一块自己的中点靠上一点。
+   * 做法是平时给卡片区加一段等于顶栏那一套高度的底边距，中点正好上移那一半；
+   * 沉浸时去掉。卡片的位置于是和顶栏在不在无关。
+   */
+  immersive: boolean
   /** 底部让出导航栏的那段内边距，和卡片墙同一个式子 */
   paddingBottom: string
 }
 
 /** 划过这么远（px），松手就换下一张 */
 export const SWIPE_PX = 64
+
+/**
+ * 顶栏那一套平时占多高：状态栏（--sa-top-real，状态栏**本来**多高）+ 标题栏 44px（BAND_TOP）+ 工具带 40px（BAND_SUB）。
+ * 和 LyricEditor 那条带浮起来时的 `top` 用的是同一组数，改带子高度记得一起改
+ */
+export const CHROME_HEIGHT = 'var(--sa-top-real) + 2.75rem + 2.5rem'
 
 /** 手指走了 dx，卡片跟着挪多少：过了触发线之后越拉越沉，别让卡片飞出屏幕 */
 export function dragOffset(dx: number, trigger = SWIPE_PX): number {
@@ -130,7 +145,7 @@ export function FlashDeck({
   onExit,
   initialIndex,
   onIndexChange,
-  chromeHidden,
+  immersive,
   paddingBottom
 }: FlashDeckProps) {
   /** 第几张；等于 cards.length 时是「过完了」那一屏 */
@@ -243,12 +258,15 @@ export function FlashDeck({
       className="flex-1 min-h-0 flex flex-col overflow-y-auto scroll-area"
       style={{ paddingBottom }}
     >
-      {/* 进度：第几张 / 共几张。就一行字，条在底下 */}
-      <div className="shrink-0 text-center text-xs text-ink-muted pt-3 tabular-nums">
-        {atEnd ? `${total} / ${total}` : `${index + 1} / ${total}`}
-      </div>
-
-      <div className="flex-1 flex flex-col justify-center px-4 py-4 max-w-xl w-full mx-auto">
+      <div
+        className="flex-1 flex flex-col justify-center px-4 py-4 max-w-xl w-full mx-auto"
+        /*
+          平时垫一段底边距 = py-4 自己的 1rem + 状态栏 + 标题栏 44px + 工具带 40px，把卡片抬到「收起顶栏后的屏幕中点」；
+          沉浸时那一套不占位置了，垫的也去掉、回到 py-4 的 1rem —— 两种状态下卡片一个像素都不挪。缘由见 immersive 那条 prop。
+          ⚠️ 那 1rem 必须算进去：第一版漏了，沉浸时 py-4 还在、平时被行内样式盖掉，量出来差 8px
+        */
+        style={{ paddingBottom: immersive ? undefined : `calc(1rem + ${CHROME_HEIGHT})` }}
+      >
         {card ? (
           <div
             /*
@@ -315,7 +333,11 @@ export function FlashDeck({
         )}
       </div>
 
-      <Scrubber total={total} index={index} onJump={jump} hidden={chromeHidden} />
+      {/* 进度：第几张 / 共几张，贴在进度条上面（用户 2026-09-09 要的：从顶上挪下来）。沉浸时不收 */}
+      <div className="shrink-0 text-center text-xs text-ink-muted tabular-nums">
+        {atEnd ? `${total} / ${total}` : `${index + 1} / ${total}`}
+      </div>
+      <Scrubber total={total} index={index} onJump={jump} />
     </div>
   )
 }
@@ -327,19 +349,9 @@ export function FlashDeck({
  * 第一版常驻一颗 20px 的圆点，他说不好看，三个方向里选了这个。
  *
  * 不用 <input type="range">：各家浏览器的样子不一样、拇指那颗点在安卓上偏小，自己画三个 div 更省事。
- * 整条带子高 44px 好按，线本身只有 2px。沉浸态下跟着顶栏一起收（位置留着，只是看不见）。
+ * 整条带子高 44px 好按，线本身只有 2px。**沉浸态下不收**（先收过一版，他改成不收）。
  */
-function Scrubber({
-  total,
-  index,
-  onJump,
-  hidden
-}: {
-  total: number
-  index: number
-  onJump: (i: number) => void
-  hidden: boolean
-}) {
+function Scrubber({ total, index, onJump }: { total: number; index: number; onJump: (i: number) => void }) {
   const track = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
   /** 手指正按着：圆点这会儿才画出来 */
@@ -363,9 +375,7 @@ function Scrubber({
 
   return (
     <div
-      className={`shrink-0 px-8 pb-2 select-none transition-opacity duration-200 ${
-        hidden ? 'opacity-0 pointer-events-none' : 'opacity-100'
-      }`}
+      className="shrink-0 px-8 pb-2 select-none"
       /* 整条都归手指：横着拖是在挑卡，不让页面抢去滚 */
       style={{ touchAction: 'none' }}
       role="slider"
@@ -373,7 +383,6 @@ function Scrubber({
       aria-valuemin={1}
       aria-valuemax={total}
       aria-valuenow={Math.min(index + 1, total)}
-      aria-hidden={hidden}
       onPointerDown={(e) => {
         if (e.pointerType === 'mouse' && e.button !== 0) return
         dragging.current = true

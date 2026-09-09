@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BookOpen, FileText, Eye, EyeOff, Sparkles, Layers, LayoutGrid } from 'lucide-react'
 import type {
@@ -118,8 +118,28 @@ function VocabularyDashboardInner({
   immersive = false,
   chromeVisible = false
 }: VocabularyDashboardProps) {
-  /** 顶栏那一套此刻收着：工具带、抽卡的进度条跟着一起收 */
+  /** 顶栏那一套此刻收着：工具带跟着收 */
   const chromeHidden = immersive && !chromeVisible
+
+  /**
+   * 顶栏进出时卡片墙在屏幕上不动 —— 照抄 LyricEditor 那一段（第八十二节，他选的 B）。
+   * 进沉浸时上面两条带离开文档流，这个滚动容器的上沿往上挪一截，里面的卡整块跟着往上顶；
+   * 上沿挪了多少 scrollTop 就反向补多少。滚到文首附近补不到负数，那一下会动，无妨。
+   * 读「以前在哪」只能靠上一次提交记下的值，所以下面那个无依赖的 effect **必须排在后面**。
+   * 抽卡那边没有滚动，走的是另一条路（FlashDeck 的 immersive）。
+   */
+  const wallRef = useRef<HTMLDivElement>(null)
+  const wallTopRef = useRef<number | null>(null)
+  useLayoutEffect(() => {
+    const el = wallRef.current
+    const prev = wallTopRef.current
+    if (!el || prev === null) return
+    const delta = el.getBoundingClientRect().top - prev
+    if (Math.abs(delta) > 0.5) el.scrollTop += delta
+  }, [immersive])
+  useLayoutEffect(() => {
+    wallTopRef.current = wallRef.current?.getBoundingClientRect().top ?? null
+  })
   const themeStyles = readerThemeStyles(readerSettings.theme)
   const [hideEnglish, setHideEnglish] = useState(false)
   const [hideChinese, setHideChinese] = useState(false)
@@ -504,7 +524,7 @@ function VocabularyDashboardInner({
           onUpdateSentence={onUpdateSentence}
           initialIndex={loadFlashPosition(flashKey, deck.length)}
           onIndexChange={rememberFlashIndex}
-          chromeHidden={chromeHidden}
+          immersive={immersive}
           canSpeak={canSpeak}
           speakingId={speakingId}
           onSpeak={(c) => (c.kind === 'vocab' ? speak(c.id, c.word, { lookup: true }) : speak(c.id, c.text))}
@@ -514,6 +534,7 @@ function VocabularyDashboardInner({
         />
       ) : (
       <div
+        ref={wallRef}
         className="flex-1 min-h-0 overflow-y-auto scroll-area p-6"
         style={{ paddingBottom: 'calc(1.5rem + var(--sa-bottom))' }}
       >
