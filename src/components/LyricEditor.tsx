@@ -414,18 +414,14 @@ function LyricEditorInner({
     if (prev === null || padPrev === null) return
     const newTop = el.getBoundingClientRect().top
     /*
-      **宽窄两套（用户 2026-09-10 定的，第一百零四节）：**
+      上沿挪了多少 + 垫子变了多少，加在一起补一次，**宽窄一样**（第一百零五节定案，中间试过一版「宽屏不补」被否）。
+      规矩就是第八十二节 B：正文在屏幕上不动、顶栏像盖在正文上滑进滑出；只有文首附近 scrollTop 补不到负数那一下会动，
+      那正是他要的「顶部的时候跳上去，除了顶部不要跳，手机就是这样的」。
 
-      - **窄屏**：上沿挪了多少就反向补多少 —— 顶栏像盖在正文上滑进滑出，正文在屏幕上不动（第八十二节 B）
-      - **宽屏**：**不补**。顶栏露着的时候它就当自己在文档流里（垫子 = 它的高度）：收起侧栏那一刻上沿 -C、垫子 +C，
-        正文本来就不动，「好像只是向左平移了」；顶栏消失垫子撤掉，正文**跳上去补位**；点空白把顶栏叫回来，
-        正文往下让开、不被盖。他的原话：「等顶栏消失，正文再跳上去」。第一百零三节那版把这两下也补掉了，
-        结果顶栏叫回来时盖在正文上，「我得往下拉或点一下空白处才看得到顶部」
-
-      宽屏上也不是一律 0：退出沉浸时顶栏收着的话上沿 +C、垫子 0 —— 那时候顶栏回到流里正文往下让，正是在流里的样子，
-      所以宽屏一律不补是对的
+      ⚠️ 这个 effect 一趟只能跑一次。从前进沉浸那一趟会被叫两回（先 -C 再 +C），文首附近第一回被 0 夹住、
+      第二回照加，正文就被推到顶栏底下 —— 根子在 useImmersiveReading 多提交了一次，那边已经改成渲染期间改 state
     */
-    const delta = isWide ? 0 : newTop - prev + (padNow - padPrev)
+    const delta = newTop - prev + (padNow - padPrev)
     const scrollBefore = el.scrollTop
     if (Math.abs(delta) > 0.5) el.scrollTop += delta
 
@@ -473,7 +469,7 @@ function LyricEditorInner({
     sample(0)
     const timers = [150, 500, 1200].map((ms) => setTimeout(() => sample(ms), ms))
     return () => timers.forEach(clearTimeout)
-  }, [immersive, chromePad, isWide])
+  }, [immersive, chromePad])
   useLayoutEffect(() => {
     containerTopRef.current = scrollContainerRef.current?.getBoundingClientRect().top ?? null
   })

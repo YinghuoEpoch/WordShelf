@@ -21,7 +21,6 @@ import { useSpeak } from '../hooks/useSpeak'
 import { SpeechNotice } from './SpeechNotice'
 import { usePrefetchAudio } from '../hooks/usePrefetchAudio'
 import { useBackHandler, BackPriority } from '../hooks/useBackHandler'
-import { useIsWide } from '../hooks/useWideLayout'
 import { SwipeToDelete } from './SwipeToDelete'
 import { SpeakButton } from './SpeakButton'
 import { FlashDeck, type CardAnchor, type FlashCard } from './FlashDeck'
@@ -121,7 +120,6 @@ function VocabularyDashboardInner({
 }: VocabularyDashboardProps) {
   /** 顶栏那一套此刻收着：工具带跟着收 */
   const chromeHidden = immersive && !chromeVisible
-  const isWide = useIsWide()
   /**
    * 沉浸里顶栏露着（宽屏点空白叫出来的那 3 秒）：卡片墙的开头垫一段顶栏那么高，
    * 滚到顶时第一排卡在浮着的顶栏底下露出来（第一百零三节，用户要的「像手机那样」）。
@@ -149,10 +147,10 @@ function VocabularyDashboardInner({
     wallPadRef.current = padNow
     const prev = wallTopRef.current
     if (prev === null || padPrev === null) return
-    // 宽屏不补：顶栏露着就当在流里，消失了卡片跳上去补位（第一百零四节，用户定的）；窄屏照第八十二节 B 补。缘由见 LyricEditor 同一处
-    const delta = isWide ? 0 : el.getBoundingClientRect().top - prev + (padNow - padPrev)
+    // 宽窄一样，缘由见 LyricEditor 同一处（第一百零五节：中间试过「宽屏不补」被否，文首那一下的跳是 0 夹出来的，正是他要的）
+    const delta = el.getBoundingClientRect().top - prev + (padNow - padPrev)
     if (Math.abs(delta) > 0.5) el.scrollTop += delta
-  }, [immersive, chromePad, isWide])
+  }, [immersive, chromePad])
   useLayoutEffect(() => {
     wallTopRef.current = wallRef.current?.getBoundingClientRect().top ?? null
   })

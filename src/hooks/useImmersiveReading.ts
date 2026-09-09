@@ -154,8 +154,24 @@ export function useImmersiveReading(
     useLayoutEffect 在绘制前跑，这里的 setState 会在同一帧内同步重渲染，
     中间那一帧根本不会被画出来。
   */
-  useLayoutEffect(() => {
+  /*
+    ⚠️ **第二次改：从「layout effect 里 setState」改成「渲染时就改」（第一百零五节）。**
+
+    layout effect 挡住了那一帧被画出来，但**没挡住多提交一次**：进沉浸那一趟 React 先按
+    「immersive 已 true、chromeVisible 还是 false」提交一次，子组件的 layout effect 跟着跑一遍，
+    然后这里 setState、同一帧内再提交一次。正文那个「顶栏进出补 scrollTop」的 effect 于是被叫了两回：
+    第一回 -C（顶栏走了）、第二回 +C（顶栏又露着了）。滚在中途两回抵消；**滚在文首**第一回被 scrollTop 的 0
+    夹住、第二回照加 C，正文就被推到浮着的顶栏底下 —— 他在平板上看到的「收起侧栏后顶栏就直接盖在正文上了」。
+
+    React 给这种「prop 变了要顺带改 state」留的正路是**渲染期间直接 setState**：React 会丢掉这一趟的输出、
+    立刻用新 state 重渲染，**一次提交都不多**。子组件看到的 immersive 和 chromeVisible 从此永远是同一趟的。
+  */
+  const [seen, setSeen] = useState({ immersive, revealOnEnter })
+  if (seen.immersive !== immersive || seen.revealOnEnter !== revealOnEnter) {
+    setSeen({ immersive, revealOnEnter })
     setChromeVisible(chromeVisibleOnImmersiveChange(immersive, revealOnEnter))
+  }
+  useLayoutEffect(() => {
     clearTimer()
   }, [immersive, revealOnEnter, clearTimer])
 
