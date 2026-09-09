@@ -36,7 +36,10 @@ interface VocabCardItem {
    * 卡是按拼写合并出来的，不对应某一条标注。要删的话看 ids。
    */
   id: string
-  /** 这张卡底下压着的标注。单篇复习里滑掉一张卡就是删掉它们全部；文库复习不给删 */
+  /**
+   * 这张卡底下压着的标注。单篇复习里滑掉一张卡就是删掉它们全部；文库复习不给删
+   * （能不能删由 swipable 那条判，和这一格有没有值无关）。抽卡拿第一条去正文里找原句。
+   */
   ids?: string[]
   pageId: string
   pageTitle: string
@@ -157,54 +160,30 @@ function VocabularyDashboardInner({
       return sections
     }
 
-    // 文库级别复习：按词汇聚合 + 词频统计
-    const { high, normal } = getFolderReviewData(reviewTarget.id, pages, annotations)
-
-    const sections: { title: string; pageId: string; items: VocabCardItem[] }[] = []
-
-    if (high.length > 0) {
-      sections.push({
-        title: '高频 / 重点生词',
-        pageId: `${reviewTarget.id}-high`,
-        items: high.map((i) => ({
-          kind: i.kind,
-          pageId: i.pageId,
-          pageTitle: i.pageTitle,
-          id: i.id,
-          word: i.word,
-          phonetic: i.phonetic,
-          pos: i.pos,
-          definition: i.definition,
-          usage: i.usage,
-          orphaned: i.orphaned,
-          auto: i.auto,
-          frequency: i.frequency
-        }))
-      })
-    }
-
-    if (normal.length > 0) {
-      sections.push({
-        title: '新词 / 普通生词',
-        pageId: `${reviewTarget.id}-normal`,
-        items: normal.map((i) => ({
-          kind: i.kind,
-          pageId: i.pageId,
-          pageTitle: i.pageTitle,
-          id: i.id,
-          word: i.word,
-          phonetic: i.phonetic,
-          pos: i.pos,
-          definition: i.definition,
-          usage: i.usage,
-          orphaned: i.orphaned,
-          auto: i.auto,
-          frequency: i.frequency
-        }))
-      })
-    }
-
-    return sections
+    /*
+      文库级别复习：按拼写合并，**按在几篇里划过分组**，篇数多的在前（用户 2026-09-09 要的）。
+      他的读法是「读完过一遍，读得多了自然会记住高频的东西」—— 一个词在越多篇里被划过，
+      越是那个自然筛选筛出来的。组名就写篇数，卡上照旧什么记号都不加。
+    */
+    return getFolderReviewData(reviewTarget.id, pages, annotations).map((g) => ({
+      title: g.docCount > 1 ? `在 ${g.docCount} 篇里划过` : '只在 1 篇里划过',
+      pageId: `${reviewTarget.id}-docs-${g.docCount}`,
+      items: g.items.map((i) => ({
+        kind: i.kind,
+        pageId: i.pageId,
+        pageTitle: i.pageTitle,
+        id: i.id,
+        ids: i.ids,
+        word: i.word,
+        phonetic: i.phonetic,
+        pos: i.pos,
+        definition: i.definition,
+        usage: i.usage,
+        orphaned: i.orphaned,
+        auto: i.auto,
+        frequency: i.frequency
+      }))
+    }))
   }
 
   type SentenceSection = { title: string; pageId: string; items: Sentence[] }

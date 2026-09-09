@@ -8,6 +8,7 @@ export interface FolderVocabItem {
   /**
    * 这条合并卡底下压着的全部标注。文库复习一律不给删（一张卡可能横跨几篇，
    * 删了看不见删的是哪几处）；单篇复习按它一次删掉这篇里的全部几处。
+   * 抽卡拿第一条去正文里找原句。
    */
   ids: string[]
   /** 单词还是短语。短语的卡片不显示音标/词性，改显示「用法」 */
@@ -28,7 +29,14 @@ export interface FolderVocabItem {
   /** 原文已删除 / 由 AI 填充：文库模式的卡片也要显示这些标记 */
   orphaned?: boolean
   auto?: boolean
+  /** 一共划了几次（同一篇里划两次也算两次） */
   frequency: number
+  /**
+   * 在几篇文档里划过。文库复习按它分组（用户 2026-09-09 要的：
+   * 「读得多了自然会记住高频的东西，这是自然筛选」—— 跨篇出现的次数就是筛选的结果）。
+   * 单篇复习里恒为 1。
+   */
+  docCount: number
 }
 
 /**
@@ -40,6 +48,7 @@ function mergeByWord(
   titleOf: (docId: string) => string
 ): FolderVocabItem[] {
   const byWord = new Map<string, FolderVocabItem>()
+  const docsOf = new Map<string, Set<string>>()
 
   for (const a of sorted) {
     const key = a.text.trim().toLowerCase()
@@ -60,11 +69,16 @@ function mergeByWord(
         sourceText: a.sourceText,
         orphaned: isOrphanAnnotation(a) || undefined,
         auto: a.auto,
-        frequency: 1
+        frequency: 1,
+        docCount: 1
       })
+      docsOf.set(key, new Set([a.docId]))
     } else {
       existing.frequency += 1
       existing.ids.push(a.id)
+      const docs = docsOf.get(key)!
+      docs.add(a.docId)
+      existing.docCount = docs.size
       // 保留第一次出现的定义/音标/词性即可，后续冲突忽略；「正文已改」的记号见上面的说明
       existing.sourceText = undefined
     }
@@ -73,11 +87,24 @@ function mergeByWord(
   return Array.from(byWord.values())
 }
 
+/** 文库复习的一组：在 docCount 篇文档里都划过的词 */
+export interface FolderVocabGroup {
+  docCount: number
+  items: FolderVocabItem[]
+}
+
 /**
- * 文库级复习：把该文库下所有文档的生词按拼写合并，统计出现次数。
+ * 文库级复习：把该文库下所有文档的生词按拼写合并，**按在几篇里划过分组**，篇数多的在前。
  *
  * 注意这里的条目是**合并出来的**，不是某一条标注本身 ——
- * 同一个词在三篇文档里各标过一次，这里只出现一条、频次记 3。
+ * 同一个词在三篇文档里各标过一次，这里只出现一条、docCount 记 3。
+ *
+ * 从前是「划过不止一次的一组、只划过一次的一组」，同一篇里划两次和两篇里各划一次
+ * 混在一起。用户 2026-09-09 定的口径是**跨篇**：一个词在越多篇里被划过，
+ * 越说明它是反复出现的重要词。同一篇里的重复在单篇复习里已经看得到，这里不再单列。
+ *
+ * 组内先按总次数从多到少，再按字母序 —— 于是「只在 1 篇里划过」那一组里，
+ * 同一篇划过两次的还是浮在最前面，老的「高频」信息没有丢。
  *
  * 文库范围里不带「正文已改」的记号：同一条底下可能压着三篇文档里的三处标注，
  * 改过的也许只有其中一处，显示「原句：xxx」用户没法知道说的是哪一处。
@@ -87,7 +114,7 @@ export function getFolderReviewData(
   bookId: string,
   pages: LyricPage[],
   annotations: Annotation[]
-): { high: FolderVocabItem[]; normal: FolderVocabItem[] } {
+): FolderVocabGroup[] {
   const pagesInBook = pages.filter((p) => p.bookId === bookId && isOnShelf(p))
   const titleOf = new Map(pagesInBook.map((p) => [p.id, p.title || '未命名']))
 
@@ -99,18 +126,23 @@ export function getFolderReviewData(
     ...i,
     sourceText: undefined
   }))
-  const high = all
-    .filter((i) => i.frequency > 1)
-    .sort((a, b) => {
-      if (b.frequency !== a.frequency) return b.frequency - a.frequency
-      return a.word.localeCompare(b.word)
-    })
 
-  const normal = all
-    .filter((i) => i.frequency === 1)
-    .sort((a, b) => a.word.localeCompare(b.word))
+  const byCount = new Map<number, FolderVocabItem[]>()
+  for (const item of all) {
+    const list = byCount.get(item.docCount) ?? []
+    list.push(item)
+    byCount.set(item.docCount, list)
+  }
 
-  return { high, normal }
+  return [...byCount.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([docCount, items]) => ({
+      docCount,
+      items: items.sort((a, b) => {
+        if (b.frequency !== a.frequency) return b.frequency - a.frequency
+        return a.word.localeCompare(b.word)
+      })
+    }))
 }
 
 /**

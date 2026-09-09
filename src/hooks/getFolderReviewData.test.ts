@@ -31,78 +31,106 @@ const PAGES = [
 ]
 
 describe('getFolderReviewData', () => {
-  it('同一个词在多篇文档里出现时合并成一条，并记下频次', () => {
-    const { high, normal } = getFolderReviewData('b1', PAGES, [
+  /** 摊平成 [词, 篇数] 好断言 */
+  const flat = (groups: ReturnType<typeof getFolderReviewData>) =>
+    groups.flatMap((g) => g.items.map((i) => [i.word, g.docCount] as const))
+
+  it('同一个词在多篇文档里出现时合并成一条，并记下篇数和次数', () => {
+    const groups = getFolderReviewData('b1', PAGES, [
       word('a', 'p1', 'stood', { definition: '站立' }),
       word('b', 'p2', 'stood'),
       word('c', 'p1', 'walked')
     ])
 
-    expect(high.map((i) => [i.word, i.frequency])).toEqual([['stood', 2]])
-    expect(normal.map((i) => i.word)).toEqual(['walked'])
+    expect(flat(groups)).toEqual([
+      ['stood', 2],
+      ['walked', 1]
+    ])
+    expect(groups[0].items[0].frequency).toBe(2)
+    expect(groups[0].items[0].ids).toEqual(['a', 'b'])
     // 合并时保留第一次出现的释义
-    expect(high[0].definition).toBe('站立')
+    expect(groups[0].items[0].definition).toBe('站立')
   })
 
   it('大小写不同算同一个词', () => {
-    const { high } = getFolderReviewData('b1', PAGES, [
+    const groups = getFolderReviewData('b1', PAGES, [
       word('a', 'p1', 'Stood'),
       word('b', 'p2', 'stood')
     ])
-    expect(high).toHaveLength(1)
-    expect(high[0].frequency).toBe(2)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].docCount).toBe(2)
+    expect(groups[0].items).toHaveLength(1)
   })
 
   it('只看这个文库，别的文库和回收站里的都不算', () => {
-    const { normal } = getFolderReviewData('b1', PAGES, [
+    const groups = getFolderReviewData('b1', PAGES, [
       word('a', 'p1', 'kept'),
       word('b', 'p3', 'otherBook'),
       word('c', 'p4', 'inTrash')
     ])
-    expect(normal.map((i) => i.word)).toEqual(['kept'])
+    expect(flat(groups)).toEqual([['kept', 1]])
   })
 
   it('句摘不参与 —— 这是生词表', () => {
-    const { high, normal } = getFolderReviewData('b1', PAGES, [
+    const groups = getFolderReviewData('b1', PAGES, [
       word('s', 'p1', '一整句话', { type: 'sentence', end: 'L0W5' }),
       word('a', 'p1', 'real')
     ])
-    expect([...high, ...normal].map((i) => i.word)).toEqual(['real'])
+    expect(flat(groups)).toEqual([['real', 1]])
   })
 
-  it('高频排在一组、按频次从高到低；单次的另一组、按字母序', () => {
-    const { high, normal } = getFolderReviewData('b1', PAGES, [
+  it('按在几篇里划过分组，篇数多的组在前；同一篇里划两次不算两篇', () => {
+    const groups = getFolderReviewData('b1', PAGES, [
       word('a1', 'p1', 'twice'),
       word('a2', 'p2', 'twice'),
       word('b1', 'p1', 'thrice'),
       word('b2', 'p2', 'thrice'),
       word('b3', 'p1', 'thrice'),
       word('c', 'p1', 'zebra'),
-      word('d', 'p1', 'apple')
+      word('d', 'p1', 'apple'),
+      word('e1', 'p1', 'samePage'),
+      word('e2', 'p1', 'samePage')
     ])
-    expect(high.map((i) => i.word)).toEqual(['thrice', 'twice'])
-    expect(normal.map((i) => i.word)).toEqual(['apple', 'zebra'])
+    expect(groups.map((g) => g.docCount)).toEqual([2, 1])
+    // 组内先按总次数从多到少，再按字母序：同一篇划过两次的 samePage 浮在 1 篇那组最前
+    expect(groups[0].items.map((i) => i.word)).toEqual(['thrice', 'twice'])
+    expect(groups[1].items.map((i) => i.word)).toEqual(['samePage', 'apple', 'zebra'])
+  })
+
+  it('三篇里都划过的排在两篇的前面', () => {
+    const pages = [...PAGES, page('p5', 'b1')]
+    const groups = getFolderReviewData('b1', pages, [
+      word('a1', 'p1', 'two'),
+      word('a2', 'p2', 'two'),
+      word('b1', 'p1', 'three'),
+      word('b2', 'p2', 'three'),
+      word('b3', 'p5', 'three')
+    ])
+    expect(groups.map((g) => [g.docCount, g.items.map((i) => i.word)])).toEqual([
+      [3, ['three']],
+      [2, ['two']]
+    ])
   })
 
   it('原文已删除 / AI 填充的标记会带到文库卡片上', () => {
-    const { normal } = getFolderReviewData('b1', PAGES, [
+    const groups = getFolderReviewData('b1', PAGES, [
       word('a', 'p1', 'gone', { start: null, end: null }),
       word('b', 'p1', 'guessed', { auto: true })
     ])
-    const byWord = new Map(normal.map((i) => [i.word, i]))
+    const byWord = new Map(groups[0].items.map((i) => [i.word, i]))
     expect(byWord.get('gone')!.orphaned).toBe(true)
     expect(byWord.get('guessed')!.auto).toBe(true)
     expect(byWord.get('guessed')!.orphaned).toBeUndefined()
   })
 
   it('文档标题带在条目上，卡片要显示它来自哪一篇', () => {
-    const { normal } = getFolderReviewData('b1', PAGES, [word('a', 'p2', 'x')])
-    expect(normal[0].pageTitle).toBe('第二章')
-    expect(normal[0].pageId).toBe('p2')
+    const groups = getFolderReviewData('b1', PAGES, [word('a', 'p2', 'x')])
+    expect(groups[0].items[0].pageTitle).toBe('第二章')
+    expect(groups[0].items[0].pageId).toBe('p2')
   })
 
-  it('空文库返回两个空组，不炸', () => {
-    expect(getFolderReviewData('b1', PAGES, [])).toEqual({ high: [], normal: [] })
+  it('空文库返回空数组，不炸', () => {
+    expect(getFolderReviewData('b1', PAGES, [])).toEqual([])
   })
 })
 
