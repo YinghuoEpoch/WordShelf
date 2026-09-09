@@ -8,6 +8,7 @@ import { RightSidebar } from './components/RightSidebar'
 import { LyricEditor } from './components/LyricEditor'
 import { VocabularyDashboard } from './components/VocabularyDashboard'
 import { isPaperTheme } from './components/theme'
+import { isArchived, isInTrash, isOnShelf } from './utils/shelf'
 import { useExportBackup } from './hooks/useExportBackup'
 import type {
   AccentColor,
@@ -52,6 +53,10 @@ import {
   savePage,
   savePageProgress,
   moveBookToTrash,
+  archiveBook,
+  archivePage,
+  unarchiveBook,
+  unarchivePage,
   movePageToTrash,
   restoreBook,
   restorePage,
@@ -365,10 +370,13 @@ export default function App() {
     }
   }, [])
 
-  const activeBooks = useMemo(() => appData.books.filter((b) => !b.deletedAt), [appData.books])
-  const activePages = useMemo(() => appData.pages.filter((p) => !p.deletedAt), [appData.pages])
-  const deletedBooks = useMemo(() => appData.books.filter((b) => b.deletedAt), [appData.books])
-  const deletedPages = useMemo(() => appData.pages.filter((p) => p.deletedAt), [appData.pages])
+  // 「在目录里」= 既不在回收站也不在归档里，判断只在 utils/shelf.ts 写一次
+  const activeBooks = useMemo(() => appData.books.filter(isOnShelf), [appData.books])
+  const activePages = useMemo(() => appData.pages.filter(isOnShelf), [appData.pages])
+  const deletedBooks = useMemo(() => appData.books.filter(isInTrash), [appData.books])
+  const deletedPages = useMemo(() => appData.pages.filter(isInTrash), [appData.pages])
+  const archivedBooks = useMemo(() => appData.books.filter(isArchived), [appData.books])
+  const archivedPages = useMemo(() => appData.pages.filter(isArchived), [appData.pages])
   const trashCount = deletedBooks.length + deletedPages.length
 
   const currentPage = useMemo(
@@ -508,6 +516,55 @@ export default function App() {
       })()
     },
     [currentPageId, refreshData]
+  )
+
+  /*
+   * 归档 / 取出（用户 2026-09-09 要的）。和上面回收站那两个一个路子：
+   * 正在读的那一篇被归档了就跳开，别让屏幕上留着一篇目录里找不到的文档。
+   */
+  const handleArchiveBook = useCallback(
+    (bookId: string) => {
+      void (async () => {
+        await archiveBook(bookId)
+        if (currentPageId && activePages.some((p) => p.bookId === bookId && p.id === currentPageId)) {
+          const rest = activePages.filter((p) => p.bookId !== bookId)
+          setCurrentPageId(rest[0]?.id ?? null)
+        }
+        await refreshData()
+      })()
+    },
+    [currentPageId, activePages, refreshData]
+  )
+
+  const handleArchivePage = useCallback(
+    (pageId: string) => {
+      void (async () => {
+        await archivePage(pageId)
+        if (currentPageId === pageId) setCurrentPageId(null)
+        await refreshData()
+      })()
+    },
+    [currentPageId, refreshData]
+  )
+
+  const handleUnarchiveBook = useCallback(
+    (bookId: string) => {
+      void (async () => {
+        await unarchiveBook(bookId)
+        await refreshData()
+      })()
+    },
+    [refreshData]
+  )
+
+  const handleUnarchivePage = useCallback(
+    (pageId: string) => {
+      void (async () => {
+        await unarchivePage(pageId)
+        await refreshData()
+      })()
+    },
+    [refreshData]
   )
 
   const handleRenameBook = useCallback(
@@ -1374,6 +1431,12 @@ export default function App() {
           pages={activePages}
           deletedBooks={deletedBooks}
           deletedPages={deletedPages}
+          archivedBooks={archivedBooks}
+          archivedPages={archivedPages}
+          onArchiveBook={handleArchiveBook}
+          onArchivePage={handleArchivePage}
+          onUnarchiveBook={handleUnarchiveBook}
+          onUnarchivePage={handleUnarchivePage}
           trashCount={trashCount}
           currentPageId={currentPageId}
           lastReadPages={lastReadPages}

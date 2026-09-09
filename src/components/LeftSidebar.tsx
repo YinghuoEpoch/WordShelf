@@ -10,6 +10,8 @@ import {
   Plus,
   Pencil,
   Trash2,
+  Archive,
+  ArchiveRestore,
   RotateCcw,
   X,
   ChevronRight,
@@ -28,6 +30,7 @@ import {
   useSensors
 } from '@dnd-kit/core'
 import type { Modifier } from '@dnd-kit/core'
+import { isOnShelf } from '../utils/shelf'
 import {
   SortableContext,
   verticalListSortingStrategy,
@@ -56,6 +59,9 @@ interface LeftSidebarProps {
   pages: LyricPage[]
   deletedBooks: LyricBook[]
   deletedPages: LyricPage[]
+  /** 归档里的（目录里看不到、随时能拿出来）。和回收站同一个面板，两个页签 */
+  archivedBooks: LyricBook[]
+  archivedPages: LyricPage[]
   trashCount: number
   currentPageId: string | null
   /**
@@ -69,6 +75,10 @@ interface LeftSidebarProps {
   onAddBook: () => void
   onMoveBookToTrash: (bookId: string) => void
   onMovePageToTrash: (pageId: string) => void
+  onArchiveBook: (bookId: string) => void
+  onArchivePage: (pageId: string) => void
+  onUnarchiveBook: (bookId: string) => void
+  onUnarchivePage: (pageId: string) => void
   onRestoreBook: (bookId: string) => void
   onRestorePage: (pageId: string) => void
   onDeleteBookPermanently: (bookId: string) => void
@@ -191,12 +201,18 @@ function LeftSidebarInner({
   pages,
   deletedBooks,
   deletedPages,
+  archivedBooks,
+  archivedPages,
   trashCount,
   currentPageId,
   lastReadPages,
   onAddBook,
   onMoveBookToTrash,
   onMovePageToTrash,
+  onArchiveBook,
+  onArchivePage,
+  onUnarchiveBook,
+  onUnarchivePage,
   onRestoreBook,
   onRestorePage,
   onDeleteBookPermanently,
@@ -230,6 +246,12 @@ function LeftSidebarInner({
   const [editValue, setEditValue] = useState('')
   const [menuOpen, setMenuOpen] = useState<MenuKind>(null)
   const [recycleOpen, setRecycleOpen] = useState(false)
+  /**
+   * 那个面板里的两个页签：归档 / 回收站（用户 2026-09-09 要归档时定的：
+   * 底栏四颗已经满了，不加第五颗，两样「不在目录里的东西」共用一个入口）。
+   * 默认落在归档 —— 那是他日常要翻的；回收站是偶尔捞一下。
+   */
+  const [recycleTab, setRecycleTab] = useState<'archive' | 'trash'>('archive')
   /**
    * 彻底删除的二次确认。`all` 是清空整个回收站，没有 id。
    * 和单条删除共用一个弹窗 —— 问的是同一件事（不可恢复），
@@ -455,8 +477,8 @@ function LeftSidebarInner({
     [onImportFile]
   )
 
-  // 根级文档：bookId 为 null，且未被软删除
-  const rootPages = pageLayout.filter((p) => !p.bookId && !p.deletedAt)
+  // 根级文档：bookId 为 null，且还在目录里（不在回收站、不在归档）
+  const rootPages = pageLayout.filter((p) => !p.bookId && isOnShelf(p))
 
   const toggleBookCollapsed = useCallback((bookId: string) => {
     setCollapsedBooks((prev) => {
@@ -605,7 +627,7 @@ function LeftSidebarInner({
       // - 这里无论最终落点是文档还是文库标题行，统一根据「最终的 pageLayout」持久化顺序
       if (activeData.type === 'page') {
         const entries: Array<{ id: string; bookId: string | null }> = pageLayout
-          .filter((p) => !p.deletedAt)
+          .filter(isOnShelf)
           .map((p) => ({ id: p.id, bookId: p.bookId }))
         onReorderPages(entries)
       }
@@ -849,6 +871,17 @@ function LeftSidebarInner({
                                       </button>
                                       <button
                                         type="button"
+                                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-ink hover:bg-stone-100"
+                                        onClick={() => {
+                                          onArchivePage(page.id)
+                                          setMenuOpen(null)
+                                        }}
+                                      >
+                                        <Archive className="w-3.5 h-3.5" />
+                                        归档
+                                      </button>
+                                      <button
+                                        type="button"
                                         className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
                                         onClick={() => {
                                           onMovePageToTrash(page.id)
@@ -891,7 +924,7 @@ function LeftSidebarInner({
             strategy={verticalListSortingStrategy}
           >
             {bookLayout.map((book) => {
-              const bookPages = pageLayout.filter((p) => p.bookId === book.id && !p.deletedAt)
+              const bookPages = pageLayout.filter((p) => p.bookId === book.id && isOnShelf(p))
               const isEditingBook = editing?.type === 'book' && editing.id === book.id
               const bookSelected = isBookSelected(book.id)
               const isMenuBook = menuOpen?.type === 'book' && menuOpen.id === book.id
@@ -995,6 +1028,14 @@ function LeftSidebarInner({
                                   >
                                     <FileText className="w-3.5 h-3.5" />
                                     新建文档
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-ink hover:bg-stone-100"
+                                    onClick={() => { onArchiveBook(book.id); setMenuOpen(null) }}
+                                  >
+                                    <Archive className="w-3.5 h-3.5" />
+                                    归档
                                   </button>
                                   <button
                                     type="button"
@@ -1112,6 +1153,14 @@ function LeftSidebarInner({
                                                 >
                                                   <Pencil className="w-3.5 h-3.5" />
                                                   重命名
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-ink hover:bg-stone-100"
+                                                  onClick={() => { onArchivePage(page.id); setMenuOpen(null) }}
+                                                >
+                                                  <Archive className="w-3.5 h-3.5" />
+                                                  归档
                                                 </button>
                                                 <button
                                                   type="button"
@@ -1251,8 +1300,9 @@ function LeftSidebarInner({
             onClick={() => setRecycleOpen(true)}
             className="relative flex h-14 w-full min-w-0 flex-col items-center justify-center gap-0.5 text-gray-600 transition-colors hover:bg-gray-100"
           >
-            <Trash2 className="h-5 w-5 shrink-0" aria-hidden />
-            <span className="text-[11px] leading-none">回收站</span>
+            <Archive className="h-5 w-5 shrink-0" aria-hidden />
+            {/* 一颗按钮两样东西。字号是死的 11px，五个字加一道杠在 250px 宽的四分之一里放得下 */}
+            <span className="text-[11px] leading-none whitespace-nowrap">归档/回收站</span>
             {trashCount > 0 && (
               <span className="absolute right-2 top-1.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-accent-500 px-1 text-[10px] font-medium text-white">
                 {trashCount > 99 ? '99+' : trashCount}
@@ -1316,16 +1366,97 @@ function LeftSidebarInner({
             className="bg-white rounded-xl shadow-xl border border-paper-border w-full max-w-md max-h-[80vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="shrink-0 flex items-center justify-between p-3 border-b border-paper-border">
-              <span className="text-sm font-medium text-ink">回收站</span>
+            <div className="shrink-0 flex items-center justify-between gap-2 p-3 border-b border-paper-border">
+              {/* 两个页签：归档 / 回收站。样式照设置里那排单选按钮 */}
+              <div className="flex gap-1.5 flex-1 min-w-0">
+                {(
+                  [
+                    { id: 'archive', label: `归档${archivedBooks.length + archivedPages.length > 0 ? ` · ${archivedBooks.length + archivedPages.length}` : ''}` },
+                    { id: 'trash', label: `回收站${trashCount > 0 ? ` · ${trashCount}` : ''}` }
+                  ] as const
+                ).map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setRecycleTab(t.id)}
+                    className={
+                      'flex-1 h-8 rounded-lg text-xs font-medium border transition-colors ' +
+                      (recycleTab === t.id
+                        ? 'border-accent-500 bg-accent-50 text-accent-800'
+                        : 'border-paper-border bg-white text-ink-muted hover:bg-stone-100')
+                    }
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
                 onClick={() => setRecycleOpen(false)}
                 className="p-1.5 rounded-lg hover:bg-stone-100 text-ink-muted"
+                aria-label="关闭"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
+            {recycleTab === 'archive' ? (
+              <div className="flex-1 min-h-0 overflow-y-auto scroll-area p-3 space-y-2">
+                {archivedBooks.length === 0 && archivedPages.length === 0 ? (
+                  <p className="text-sm text-ink-muted py-4 text-center leading-relaxed">
+                    没有归档的东西。
+                    <br />
+                    目录里文库或文档的「更多」菜单里可以归档：目录里看不到，在这儿随时拿出来。
+                  </p>
+                ) : (
+                  <>
+                    {archivedBooks.map((b) => (
+                      <div
+                        key={b.id}
+                        className="flex items-center justify-between gap-2 py-2 px-3 rounded-lg bg-stone-50 border border-stone-100"
+                      >
+                        <span className="text-sm text-ink truncate flex-1">{b.name}</span>
+                        <span className="text-xs text-ink-muted shrink-0">文库</span>
+                        <button
+                          type="button"
+                          onClick={() => onUnarchiveBook(b.id)}
+                          className="shrink-0 p-1.5 rounded hover:bg-stone-200 text-ink-muted hover:text-ink"
+                          title="取出"
+                          aria-label="取出"
+                        >
+                          <ArchiveRestore className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    {archivedPages.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between gap-2 py-2 px-3 rounded-lg bg-stone-50 border border-stone-100"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm text-ink truncate">{p.title || '未命名'}</span>
+                          {/* 上次读是什么时候：帮他决定拿哪个出来 */}
+                          {p.progressAt ? (
+                            <span className="block text-xs text-ink-muted">
+                              上次读 {new Date(p.progressAt).toLocaleDateString('zh-CN')}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="text-xs text-ink-muted shrink-0">文档</span>
+                        <button
+                          type="button"
+                          onClick={() => onUnarchivePage(p.id)}
+                          className="shrink-0 p-1.5 rounded hover:bg-stone-200 text-ink-muted hover:text-ink"
+                          title="取出"
+                          aria-label="取出"
+                        >
+                          <ArchiveRestore className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            ) : (
             <div className="flex-1 min-h-0 overflow-y-auto scroll-area p-3 space-y-2">
               {deletedBooks.length === 0 && deletedPages.length === 0 ? (
                 <p className="text-sm text-ink-muted py-4 text-center">回收站为空</p>
@@ -1388,6 +1519,7 @@ function LeftSidebarInner({
                 </>
               )}
             </div>
+            )}
             {/*
               「清空回收站」单独占一行放在底部。
               **不能和右上角的关闭叉挨着** —— 第一版放在标题栏里，量出来两者只隔
@@ -1395,7 +1527,7 @@ function LeftSidebarInner({
               放到底栏之后隔着整个列表的高度，误触基本不可能。
               回收站空的时候整行不出现，免得摆一个点了没用的东西。
             */}
-            {trashCount > 0 && (
+            {recycleTab === 'trash' && trashCount > 0 && (
               <div className="shrink-0 border-t border-paper-border p-2">
                 <button
                   type="button"

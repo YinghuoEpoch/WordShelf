@@ -3,6 +3,13 @@ export interface LyricBook {
   name: string
   createdAt: number
   deletedAt?: number
+  /**
+   * 归档（2026-09-09 用户要的）：目录里看不到，但随时能拿出来。
+   * 和 deletedAt 是同一套做法（打个时间戳、不从数组里拿走），语义不同：
+   * 回收站是「打算删」，归档是「留着但别占目录」。同步时跟着整个对象走，和 deletedAt 一样。
+   * 「还在目录里吗」一律问 utils/shelf.ts 的 isOnShelf，别自己写 `!deletedAt`。
+   */
+  archivedAt?: number
 }
 
 export interface LyricPage {
@@ -15,6 +22,8 @@ export interface LyricPage {
   content: string
   updatedAt: number
   deletedAt?: number
+  /** 归档，含义同 LyricBook.archivedAt */
+  archivedAt?: number
   /**
    * 阅读进度：滚动位置 scrollTop，用于恢复上次阅读位置。
    *
