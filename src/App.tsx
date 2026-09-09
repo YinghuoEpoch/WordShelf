@@ -7,6 +7,7 @@ import { LeftSidebar } from './components/LeftSidebar'
 import { RightSidebar } from './components/RightSidebar'
 import { LyricEditor } from './components/LyricEditor'
 import { VocabularyDashboard } from './components/VocabularyDashboard'
+import { isPaperTheme } from './components/theme'
 import { useExportBackup } from './hooks/useExportBackup'
 import type {
   AccentColor,
@@ -115,14 +116,14 @@ function loadReaderSettings(): ReaderSettings {
     if (!raw) return defaultReaderSettings
     const parsed = JSON.parse(raw) as Record<string, unknown>
     const rawTheme = parsed.theme as string | undefined
-    const theme: ReaderSettings['theme'] =
-      rawTheme === 'pure' || rawTheme === 'original' || rawTheme === 'rice'
-        ? rawTheme
-        : rawTheme === 'light' || rawTheme === 'mist'
-          ? 'original'
-          : rawTheme === 'paper'
-            ? 'rice'
-            : defaultReaderSettings.theme
+    // 认得的照收（表在 theme.ts）；更老的几个名字对到新的上
+    const theme: ReaderSettings['theme'] = isPaperTheme(rawTheme)
+      ? rawTheme
+      : rawTheme === 'light' || rawTheme === 'mist'
+        ? 'original'
+        : rawTheme === 'paper'
+          ? 'rice'
+          : defaultReaderSettings.theme
     return {
       fontSize: typeof parsed.fontSize === 'number' ? Math.min(24, Math.max(12, parsed.fontSize)) : defaultReaderSettings.fontSize,
       fontFamily: (() => {

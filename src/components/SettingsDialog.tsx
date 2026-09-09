@@ -53,7 +53,8 @@ import {
   type SpeechDiagnosis,
   type TryReadResult
 } from '../speech/diagnose'
-import type { AccentColor, ReaderSettings } from '../types'
+import type { AccentColor, PaperTheme, ReaderSettings } from '../types'
+import { PAPERS, paperOf } from './theme'
 import type { SyncStatus } from '../hooks/useSync'
 
 /** 一问一答：问出来了就显示答案，报错了就把原文摊出来 —— 诊断要的正是原文 */
@@ -217,12 +218,6 @@ const FONT_FAMILIES = [
   { id: 'sans', label: '无衬线' },
   { id: 'serif', label: '衬线' },
   { id: 'rounded', label: '圆体' }
-] as const
-
-const THEMES = [
-  { id: 'pure', label: '标准' },
-  { id: 'original', label: '青灰' },
-  { id: 'rice', label: '暖白' }
 ] as const
 
 /** 发音那一栏的两组选项（用户 2026-09-08 加的，09-09 加了「都不发音」），见 speech/prefs.ts */
@@ -592,6 +587,33 @@ function AccentChoices({
 }
 
 /**
+ * 一排纸色块。**每块涂的就是它自己的底色和字色**，名字写在里面 ——
+ * 从前是一排白按钮只写名字，用户 2026-09-09：「按钮的颜色应该改成对应的颜色，而不是白的还要我猜」。
+ * 选中的套一圈深色边，和强调色那排一个做法。
+ */
+function PaperChoices({ value, onPick }: { value: PaperTheme; onPick: (id: PaperTheme) => void }) {
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {PAPERS.map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          onClick={() => onPick(p.id)}
+          aria-pressed={value === p.id}
+          className={
+            'h-10 rounded-lg border-2 text-xs font-medium transition-colors ' +
+            (value === p.id ? 'border-ink' : 'border-paper-border hover:border-stone-400')
+          }
+          style={{ background: p.bg, color: p.text }}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
  * 设置里的子屏，全部登记在这儿。
  *
  * ⚠️ **加一屏只从这里下手。** 从前每块子屏各开一个布尔，而「现在在子屏吗」
@@ -603,6 +625,7 @@ function AccentChoices({
  * SUB_TITLE 和下面那串渲染分支上把该改的地方一处处指出来 —— 不靠记性。
  */
 type SubScreen =
+  | 'look'
   | 'ai'
   | 'cloudTts'
   | 'sync'
@@ -616,6 +639,7 @@ type SubScreen =
 
 /** 每块子屏顶栏写什么。Record 是完整的，少一屏编译不过 */
 const SUB_TITLE: Record<SubScreen, string> = {
+  look: '阅读外观',
   ai: 'AI 设置',
   cloudTts: '云端朗读',
   sync: '云端同步',
@@ -860,7 +884,64 @@ export function SettingsDialog({
         </div>
 
         <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto scroll-area p-3 space-y-4">
-          {sub === 'ai' ? (
+          {sub === 'look' ? (
+            /* 阅读外观（用户 2026-09-09 要的子屏：主列表里太挤，纸色也多了） */
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-ink">字号</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setFontSize(Math.max(12, readerSettings.fontSize - 2))}
+                    className="w-8 h-8 rounded-lg border border-paper-border bg-white hover:bg-stone-100 text-ink text-sm font-medium"
+                    aria-label="调小字号"
+                  >
+                    −
+                  </button>
+                  <span className="w-8 text-center text-sm text-ink tabular-nums">
+                    {readerSettings.fontSize}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setFontSize(Math.min(24, readerSettings.fontSize + 2))}
+                    className="w-8 h-8 rounded-lg border border-paper-border bg-white hover:bg-stone-100 text-ink text-sm font-medium"
+                    aria-label="调大字号"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <span className="text-sm text-ink block">字体</span>
+                <Choices
+                  value={readerSettings.fontFamily}
+                  options={FONT_FAMILIES}
+                  onPick={(f) => onReaderSettingsChange({ ...readerSettings, fontFamily: f })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <span className="text-sm text-ink block">
+                  纸色 <span className="text-ink-muted">· {paperOf(readerSettings.theme).label}</span>
+                </span>
+                <PaperChoices
+                  value={readerSettings.theme}
+                  onPick={(t) => onReaderSettingsChange({ ...readerSettings, theme: t })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <span className="text-sm text-ink block">
+                  强调色{' '}
+                  <span className="text-ink-muted">
+                    · {ACCENTS.find((a) => a.id === readerSettings.accent)?.label}
+                  </span>
+                </span>
+                <AccentChoices
+                  value={readerSettings.accent}
+                  onPick={(a) => onReaderSettingsChange({ ...readerSettings, accent: a })}
+                />
+              </div>
+            </div>
+          ) : sub === 'ai' ? (
             <div className="space-y-3">
               <AiSettingsPanel
                 onSaved={(cfg) => {
@@ -932,59 +1013,24 @@ export function SettingsDialog({
                 </button>
               </Section>
 
-              <Section title="阅读外观">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm text-ink">字号</span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setFontSize(Math.max(12, readerSettings.fontSize - 2))}
-                      className="w-8 h-8 rounded-lg border border-paper-border bg-white hover:bg-stone-100 text-ink text-sm font-medium"
-                      aria-label="调小字号"
-                    >
-                      −
-                    </button>
-                    <span className="w-8 text-center text-sm text-ink tabular-nums">
-                      {readerSettings.fontSize}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setFontSize(Math.min(24, readerSettings.fontSize + 2))}
-                      className="w-8 h-8 rounded-lg border border-paper-border bg-white hover:bg-stone-100 text-ink text-sm font-medium"
-                      aria-label="调大字号"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <span className="text-sm text-ink block">字体</span>
-                  <Choices
-                    value={readerSettings.fontFamily}
-                    options={FONT_FAMILIES}
-                    onPick={(f) => onReaderSettingsChange({ ...readerSettings, fontFamily: f })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <span className="text-sm text-ink block">纸色</span>
-                  <Choices
-                    value={readerSettings.theme}
-                    options={THEMES}
-                    onPick={(t) => onReaderSettingsChange({ ...readerSettings, theme: t })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <span className="text-sm text-ink block">
-                    强调色{' '}
-                    <span className="text-ink-muted">
-                      · {ACCENTS.find((a) => a.id === readerSettings.accent)?.label}
+              <Section title="阅读">
+                <button
+                  type="button"
+                  onClick={() => enterSub(() => setSub('look'))}
+                  className="w-full flex items-center gap-2 text-left"
+                >
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm text-ink">阅读外观</span>
+                    <span className="block text-xs text-ink-muted truncate">
+                      {`${readerSettings.fontSize} 号 · ${
+                        FONT_FAMILIES.find((f) => f.id === readerSettings.fontFamily)?.label
+                      } · ${paperOf(readerSettings.theme).label} · ${
+                        ACCENTS.find((a) => a.id === readerSettings.accent)?.label
+                      }`}
                     </span>
                   </span>
-                  <AccentChoices
-                    value={readerSettings.accent}
-                    onPick={(a) => onReaderSettingsChange({ ...readerSettings, accent: a })}
-                  />
-                </div>
+                  <ChevronRight className="w-4 h-4 text-ink-muted shrink-0" />
+                </button>
               </Section>
 
               <Section title="AI">

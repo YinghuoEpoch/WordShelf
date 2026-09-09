@@ -82,11 +82,17 @@ export interface AppData {
   annotationsMigratedAt?: number
 }
 
+export type PaperTheme = 'pure' | 'original' | 'rice' | 'cream' | 'sepia' | 'mint' | 'gray'
+
 export type ReaderSettings = {
   fontSize: number
   fontFamily: 'sans' | 'serif' | 'rounded'
-  /** 纸色。仅浅色变体：纯白 / 青灰(Sage) / 暖白 */
-  theme: 'pure' | 'original' | 'rice'
+  /**
+   * 纸色。仅浅色变体，色值和名字在 components/theme.ts 的 PAPERS 表里。
+   * 前三档是老的（标准 / 青灰 / 暖白），后四档 2026-09-09 加的（用户嫌太少）。
+   * 深色模式不在这里 —— 那是另一件事（攒着的清单里）
+   */
+  theme: PaperTheme
   /**
    * 强调色。下划线、按钮、卡片词头这些「有颜色的地方」用它。
    *
