@@ -225,10 +225,11 @@ const THEMES = [
   { id: 'rice', label: '暖白' }
 ] as const
 
-/** 发音那一栏的两组选项（用户 2026-09-08 加的），见 speech/prefs.ts */
-const TAP_SPEAK = [
-  { id: 'off', label: '长按才发音' },
-  { id: 'on', label: '点按也发音' }
+/** 发音那一栏的两组选项（用户 2026-09-08 加的，09-09 加了「都不发音」），见 speech/prefs.ts */
+const WORD_SPEAK = [
+  { id: 'longPress', label: '长按才发音' },
+  { id: 'tap', label: '点按也发音' },
+  { id: 'off', label: '都不发音' }
 ] as const
 const ACCENTS_SPEECH = [
   { id: 'us', label: '美音' },
@@ -1034,14 +1035,15 @@ export function SettingsDialog({
 
               <Section title="发音">
                 <div className="space-y-1.5">
-                  <span className="text-sm text-ink block">点按单词</span>
+                  <span className="text-sm text-ink block">正文里的单词</span>
                   <Choices
-                    value={speechPrefs.tapToSpeak ? 'on' : 'off'}
-                    options={TAP_SPEAK}
-                    onPick={(v) => saveSpeechPrefs({ ...speechPrefs, tapToSpeak: v === 'on' })}
+                    value={speechPrefs.wordSpeak}
+                    options={WORD_SPEAK}
+                    onPick={(v) => saveSpeechPrefs({ ...speechPrefs, wordSpeak: v })}
                   />
                   <p className="text-xs text-ink-muted leading-relaxed">
-                    长按取词一直会发音。开了之后轻点单词也发音，不选中。
+                    「点按也发音」：轻点单词就念，不选中。「都不发音」：正文里长按、点按都不念；
+                    笔记栏点词、复习页的朗读键照旧。
                   </p>
                 </div>
                 <div className="space-y-1.5">

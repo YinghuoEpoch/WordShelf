@@ -3,7 +3,9 @@ import { AMERICAN, BRITISH } from './dictAudio'
 /**
  * 发音的两个开关（设置 → 发音）。用户 2026-09-08 加的：
  *
- * - **点按单词发音**：从前只有长按取词时顺带念一遍；开了之后轻点单词也念，不选中
+ * - **正文里的单词什么时候念**（三档，2026-09-09 加了第三档）：
+ *   `longPress` 长按取词时顺带念一遍（从前的样子）；`tap` 轻点单词也念，不选中；
+ *   `off` 正文里一律不念 —— 笔记栏点词、复习页的朗读键不归这里管，那是明着点的
  * - **英音 / 美音**：只对**词典真人录音**那一级有效（地址里 `type=1/2`，早就留着）。
  *   云端合成和手机引擎不受影响 —— 他的原话「第一个机制应该有切换英音美音的选项」
  *
@@ -15,13 +17,15 @@ import { AMERICAN, BRITISH } from './dictAudio'
  */
 
 export type Accent = 'us' | 'uk'
+/** 正文里的单词什么时候念：长按才念 / 点按也念 / 都不念 */
+export type WordSpeak = 'longPress' | 'tap' | 'off'
 
 export interface SpeechPrefs {
   accent: Accent
-  tapToSpeak: boolean
+  wordSpeak: WordSpeak
 }
 
-export const DEFAULT_SPEECH_PREFS: SpeechPrefs = { accent: 'us', tapToSpeak: false }
+export const DEFAULT_SPEECH_PREFS: SpeechPrefs = { accent: 'us', wordSpeak: 'longPress' }
 
 export const ACCENT_LABEL: Record<Accent, string> = { us: '美音', uk: '英音' }
 
@@ -36,10 +40,17 @@ const KEY = 'lyric-vocab-speech-prefs'
 export function parseStoredSpeechPrefs(raw: string | null): SpeechPrefs {
   if (!raw) return DEFAULT_SPEECH_PREFS
   try {
-    const parsed = JSON.parse(raw) as Partial<SpeechPrefs> | null
+    const parsed = JSON.parse(raw) as (Partial<SpeechPrefs> & { tapToSpeak?: unknown }) | null
+    const ws = parsed?.wordSpeak
     return {
       accent: parsed?.accent === 'uk' || parsed?.accent === 'us' ? parsed.accent : DEFAULT_SPEECH_PREFS.accent,
-      tapToSpeak: parsed?.tapToSpeak === true
+      wordSpeak:
+        ws === 'longPress' || ws === 'tap' || ws === 'off'
+          ? ws
+          : // 老格式：tapToSpeak 那个布尔。true 就是「点按也念」，其余都是从前的默认
+            parsed?.tapToSpeak === true
+            ? 'tap'
+            : DEFAULT_SPEECH_PREFS.wordSpeak
     }
   } catch {
     return DEFAULT_SPEECH_PREFS
