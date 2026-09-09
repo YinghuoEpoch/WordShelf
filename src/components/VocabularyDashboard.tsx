@@ -1,6 +1,6 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { BookOpen, FileText, Eye, EyeOff, Sparkles } from 'lucide-react'
+import { BookOpen, FileText, Eye, EyeOff, Sparkles, Layers, LayoutGrid } from 'lucide-react'
 import type {
   Annotation,
   LyricPage,
@@ -22,6 +22,10 @@ import { SpeechNotice } from './SpeechNotice'
 import { usePrefetchAudio } from '../hooks/usePrefetchAudio'
 import { useBackHandler, BackPriority } from '../hooks/useBackHandler'
 import { SwipeToDelete } from './SwipeToDelete'
+import { SpeakButton } from './SpeakButton'
+import { FlashDeck, type CardAnchor, type FlashCard } from './FlashDeck'
+import { contextSentence } from '../utils/contextSentence'
+import { buildWordList, type WordRef } from '../utils/reconcile'
 
 export type ReviewTarget =
   | { type: 'page'; id: string }
@@ -107,6 +111,11 @@ function VocabularyDashboardInner({
   const [hideEnglish, setHideEnglish] = useState(false)
   const [hideChinese, setHideChinese] = useState(false)
   const [reviewMode, setReviewMode] = useState<'vocab' | 'sentence'>('vocab')
+  /**
+   * 抽卡：一次只看一张（用户 2026-09-09 要的，见 FlashDeck）。
+   * 换一篇、切词/句、进编辑模式都退回卡片墙 —— 抽卡不给编辑，铅笔一按就该看到能改的那一版。
+   */
+  const [flashcards, setFlashcards] = useState(false)
   /** 左滑露出删除的那张卡。同时只开一张，不然满屏都是红按钮 */
   /**
    * 划到位之后要问的那一条。
@@ -259,6 +268,68 @@ function VocabularyDashboardInner({
 
   // 安卓返回键先关这个框。和左侧栏的「彻底删除」同一档 —— 问的是同一件事
   useBackHandler(!!pendingDelete, BackPriority.confirmDelete, () => setPendingDelete(null))
+  // 安卓返回键：抽卡开着就先退回卡片墙
+  useBackHandler(flashcards, BackPriority.flashcards, () => setFlashcards(false))
+  useEffect(() => {
+    setFlashcards(false)
+  }, [reviewTarget?.id, reviewMode, isEditMode])
+
+  /**
+   * 抽卡上的原句：按文档缓存分好的词表，正文没改就不重算。
+   * 一篇长文的词表要几十毫秒，一叠两百张卡不能每张算一遍。
+   */
+  const pageById = useMemo(() => new Map(pages.map((p) => [p.id, p])), [pages])
+  const annotationById = useMemo(() => new Map(annotations.map((a) => [a.id, a])), [annotations])
+  const wordLists = useRef(new Map<string, { updatedAt: number; words: WordRef[] }>())
+  const contextOf = useCallback(
+    (anchor: CardAnchor) => {
+      const page = pageById.get(anchor.docId)
+      if (!page) return null
+      let entry = wordLists.current.get(page.id)
+      if (!entry || entry.updatedAt !== page.updatedAt) {
+        entry = { updatedAt: page.updatedAt, words: buildWordList(page.content) }
+        wordLists.current.set(page.id, entry)
+      }
+      return contextSentence(page.content, entry.words, anchor.start, anchor.end)
+    },
+    [pageById]
+  )
+  const anchorOf = (item: VocabCardItem): CardAnchor | null => {
+    const a = annotationById.get(item.ids?.[0] ?? '')
+    if (!a) return null
+    return { docId: a.docId, start: a.start, end: a.end }
+  }
+  /** 抽卡的那一叠：和卡片墙同一批、同一个次序，只是摊平 */
+  const deck: FlashCard[] =
+    reviewMode === 'vocab'
+      ? grouped.flatMap((g) =>
+          g.items.map((i) => ({
+            kind: 'vocab' as const,
+            id: i.id,
+            word: i.word,
+            isPhrase: i.kind === 'phrase',
+            phonetic: i.phonetic,
+            pos: i.pos,
+            definition: i.definition,
+            usage: i.usage,
+            auto: i.auto,
+            orphaned: i.orphaned,
+            pageTitle: i.pageTitle,
+            anchor: i.orphaned ? null : anchorOf(i)
+          }))
+        )
+      : groupedSentences.flatMap((g) =>
+          g.items.map((i) => ({
+            kind: 'sentence' as const,
+            id: i.id,
+            text: i.text,
+            grammar: i.grammar,
+            meaning: i.meaning,
+            auto: i.auto,
+            orphaned: i.orphaned,
+            pageTitle: g.title
+          }))
+        )
 
   if (!reviewTarget) {
     return (
@@ -349,6 +420,20 @@ function VocabularyDashboardInner({
               AI 填充{autoFillCount > 0 ? ` ${autoFillCount}` : ''}
             </button>
           )}
+          {/* 抽卡 / 列表：同一颗键来回切。开着时和遮罩键一样用强调色的字表示，不填底 */}
+          {displayCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setFlashcards((v) => !v)}
+              title={flashcards ? '回到卡片列表' : '一次只看一张'}
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-medium transition-colors hover:bg-stone-100 ${
+                flashcards ? 'text-accent-700' : 'text-ink-muted'
+              }`}
+            >
+              {flashcards ? <LayoutGrid className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
+              {flashcards ? '列表' : '抽卡'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setReviewMode((v) => (v === 'vocab' ? 'sentence' : 'vocab'))}
@@ -366,6 +451,21 @@ function VocabularyDashboardInner({
         底部让出导航栏：加在滚动区自己的内边距里（p-6 是 1.5rem），
         底色才铺得到屏幕最下沿 —— 理由同 LyricEditor 那处
       */}
+      {flashcards && displayCount > 0 ? (
+        <FlashDeck
+          cards={deck}
+          showSource={reviewTarget.type === 'book'}
+          scopeLabel={reviewTarget.type === 'book' ? '这个文库' : '这一篇'}
+          hideEnglish={hideEnglish}
+          hideChinese={hideChinese}
+          canSpeak={canSpeak}
+          speakingId={speakingId}
+          onSpeak={(c) => (c.kind === 'vocab' ? speak(c.id, c.word, { lookup: true }) : speak(c.id, c.text))}
+          contextOf={contextOf}
+          onExit={() => setFlashcards(false)}
+          paddingBottom="calc(1rem + var(--sa-bottom))"
+        />
+      ) : (
       <div
         className="flex-1 min-h-0 overflow-y-auto scroll-area p-6"
         style={{ paddingBottom: 'calc(1.5rem + var(--sa-bottom))' }}
@@ -450,6 +550,7 @@ function VocabularyDashboardInner({
           </div>
         )}
       </div>
+      )}
 
       {/*
         划到位之后问这一句。挂到 body 上，否则遮罩只盖得住看板这一块。
@@ -493,43 +594,6 @@ function VocabularyDashboardInner({
         document.body
       )}
     </div>
-  )
-}
-
-/**
- * 可朗读的那段英文：文字本身就是按钮，点一下读出来。
- *
- * **不放喇叭图标** —— 试过一版，摆在哪条中线上都别扭，
- * 而正在念的时候文字会变色，反馈已经够了。
- * 读不了的手机（没装朗读引擎）直接退回普通文字，不摆一个按了没反应的按钮。
- */
-function SpeakButton({
-  canSpeak,
-  speaking,
-  onSpeak,
-  label,
-  className,
-  children
-}: {
-  canSpeak: boolean
-  speaking: boolean
-  onSpeak: () => void
-  label: string
-  className: string
-  children: React.ReactNode
-}) {
-  if (!canSpeak) return <span className={`${className} text-accent-800`}>{children}</span>
-
-  return (
-    <button
-      type="button"
-      onClick={onSpeak}
-      aria-label={label}
-      title={label}
-      className={`${className} transition-colors ${speaking ? 'text-accent-500' : 'text-accent-800'}`}
-    >
-      {children}
-    </button>
   )
 }
 
