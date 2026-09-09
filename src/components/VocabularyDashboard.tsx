@@ -25,6 +25,7 @@ import { SwipeToDelete } from './SwipeToDelete'
 import { SpeakButton } from './SpeakButton'
 import { FlashDeck, type CardAnchor, type FlashCard } from './FlashDeck'
 import { contextSentence } from '../utils/contextSentence'
+import { deckKey, loadFlashPosition, saveFlashPosition } from '../utils/flashPosition'
 import { buildWordList, type WordRef } from '../utils/reconcile'
 
 export type ReviewTarget =
@@ -113,7 +114,7 @@ function VocabularyDashboardInner({
   const [reviewMode, setReviewMode] = useState<'vocab' | 'sentence'>('vocab')
   /**
    * 抽卡：一次只看一张（用户 2026-09-09 要的，见 FlashDeck）。
-   * 换一篇、切词/句、进编辑模式都退回卡片墙 —— 抽卡不给编辑，铅笔一按就该看到能改的那一版。
+   * 换一篇、切词/句退回卡片墙；**编辑模式不退** —— 卡上的格子直接能改（第二版，用户要的）。
    */
   const [flashcards, setFlashcards] = useState(false)
   /** 左滑露出删除的那张卡。同时只开一张，不然满屏都是红按钮 */
@@ -272,7 +273,7 @@ function VocabularyDashboardInner({
   useBackHandler(flashcards, BackPriority.flashcards, () => setFlashcards(false))
   useEffect(() => {
     setFlashcards(false)
-  }, [reviewTarget?.id, reviewMode, isEditMode])
+  }, [reviewTarget?.id, reviewMode])
 
   /**
    * 抽卡上的原句：按文档缓存分好的词表，正文没改就不重算。
@@ -330,6 +331,13 @@ function VocabularyDashboardInner({
             pageTitle: g.title
           }))
         )
+  /** 翻到第几张记在本机（utils/flashPosition.ts），退出再进来接着翻 */
+  const flashKey = reviewTarget ? deckKey(reviewTarget, reviewMode) : ''
+  const deckLength = deck.length
+  const rememberFlashIndex = useCallback(
+    (i: number) => saveFlashPosition(flashKey, i, deckLength),
+    [flashKey, deckLength]
+  )
 
   if (!reviewTarget) {
     return (
@@ -420,24 +428,28 @@ function VocabularyDashboardInner({
               AI 填充{autoFillCount > 0 ? ` ${autoFillCount}` : ''}
             </button>
           )}
-          {/* 抽卡 / 列表：同一颗键来回切。开着时和遮罩键一样用强调色的字表示，不填底 */}
+          {/*
+            抽卡 / 列表：同一颗键来回切，**只有图标、不带字、不标状态**。
+            第一版带「抽卡 / 列表」两个字、开着时字变强调色 —— 用户真机：这一栏太挤，
+            而且「我只需要点击的时候有反馈就行」。切没切进抽卡，屏幕本身已经说明了。
+          */}
           {displayCount > 0 && (
             <button
               type="button"
               onClick={() => setFlashcards((v) => !v)}
               title={flashcards ? '回到卡片列表' : '一次只看一张'}
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm font-medium transition-colors hover:bg-stone-100 ${
-                flashcards ? 'text-accent-700' : 'text-ink-muted'
-              }`}
+              aria-label={flashcards ? '回到卡片列表' : '抽卡'}
+              className="p-1.5 rounded-lg text-ink-muted transition-colors hover:bg-stone-100"
             >
               {flashcards ? <LayoutGrid className="w-4 h-4" /> : <Layers className="w-4 h-4" />}
-              {flashcards ? '列表' : '抽卡'}
             </button>
           )}
           <button
             type="button"
             onClick={() => setReviewMode((v) => (v === 'vocab' ? 'sentence' : 'vocab'))}
-            className="px-2 py-1 rounded-lg text-sm font-medium text-ink-muted hover:bg-stone-100 focus:bg-stone-100 focus:outline-none transition-colors"
+            /* 从前带着 focus:bg-stone-100 —— 手机上点完焦点留在键上，灰底就赖着不走（用户 2026-09-09 报的）。
+               现在只剩按下那一瞬的反馈（hover: 在触屏上就是正按着） */
+            className="px-2 py-1 rounded-lg text-sm font-medium text-ink-muted hover:bg-stone-100 transition-colors"
           >
             {reviewMode === 'vocab' ? '词' : '句'}
           </button>
@@ -453,11 +465,18 @@ function VocabularyDashboardInner({
       */}
       {flashcards && displayCount > 0 ? (
         <FlashDeck
+          /* 换一叠（另一篇 / 词↔句）就重建，起点从记下来的位置读 */
+          key={flashKey}
           cards={deck}
           showSource={reviewTarget.type === 'book'}
           scopeLabel={reviewTarget.type === 'book' ? '这个文库' : '这一篇'}
           hideEnglish={hideEnglish}
           hideChinese={hideChinese}
+          isEditMode={isEditMode}
+          onUpdateWord={onUpdateWord}
+          onUpdateSentence={onUpdateSentence}
+          initialIndex={loadFlashPosition(flashKey, deck.length)}
+          onIndexChange={rememberFlashIndex}
           canSpeak={canSpeak}
           speakingId={speakingId}
           onSpeak={(c) => (c.kind === 'vocab' ? speak(c.id, c.word, { lookup: true }) : speak(c.id, c.text))}

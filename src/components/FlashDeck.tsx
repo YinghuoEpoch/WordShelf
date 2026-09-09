@@ -1,21 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { AutoMark } from './AutoMark'
+import { AutoTextarea } from './AutoTextarea'
 import { SpeakButton } from './SpeakButton'
 import { DIRECTION_SLOP, isHorizontalSwipe } from './SwipeToDelete'
 import type { ContextSentence } from '../utils/contextSentence'
+import type { Sentence, WordNote } from '../types'
 
 /**
- * 抽卡：复习页的另一种翻法 —— 一次只看一张，铺满中间，左右滑或点箭头换下一张。
+ * 抽卡：复习页的另一种翻法 —— 一次只看一张，铺满中间，左右滑或拖底下的进度条换卡。
  *
  * 用户 2026-09-09 定的口径：**不是考试**。他不喜欢复习，读法是「读完过一遍，然后读更多，
- * 读得多了自然记住高频的」。所以这里没有「认识 / 不认识」的打分、不记分、不存任何东西，
+ * 读得多了自然记住高频的」。所以这里没有「认识 / 不认识」的打分、不记分，
  * 滑到底就是「过完了」。它给的是节奏和终点，卡片墙给不了这两样。
  *
  * 一次只显示一张，所以卡片可以带上**原句**（词在句子里高亮）—— 卡片墙上这样做太高，
  * 一屏放不下几张；这里屏幕本来就只给它一张。
  *
  * 遮罩（隐藏英文 / 中文）和卡片墙同一套开关，点卡片翻开。
+ * 翻到第几张由外面记着（`utils/flashPosition.ts`），退出再进来接着翻。
+ * 编辑模式下卡上的格子直接能改，和卡片墙同一套字段。
  */
 
 export interface CardAnchor {
@@ -59,11 +62,18 @@ interface FlashDeckProps {
   scopeLabel: string
   hideEnglish: boolean
   hideChinese: boolean
+  isEditMode: boolean
+  onUpdateWord: (word: string, updates: Partial<WordNote> & { grammar?: string }) => void
+  onUpdateSentence?: (id: string, updates: Partial<Pick<Sentence, 'grammar' | 'meaning'>>) => void
   canSpeak: boolean
   speakingId: string | null
   onSpeak: (card: FlashCard) => void
   contextOf: (anchor: CardAnchor) => ContextSentence | null
   onExit: () => void
+  /** 进来时从第几张开始（上次退出记下的） */
+  initialIndex: number
+  /** 翻到第几张了，外面拿去记 */
+  onIndexChange: (index: number) => void
   /** 底部让出导航栏的那段内边距，和卡片墙同一个式子 */
   paddingBottom: string
 }
@@ -86,21 +96,42 @@ export function swipeDirection(dx: number, trigger = SWIPE_PX): -1 | 0 | 1 {
   return 0
 }
 
+/**
+ * 进度条：手指落在轨道的哪一处，就是第几张。
+ * 轨道两端对应第一张和最后一张（不含「过完了」那一屏 —— 那一屏只能滑过最后一张到）。
+ */
+export function scrubIndex(clientX: number, trackLeft: number, trackWidth: number, total: number): number {
+  if (total <= 1 || trackWidth <= 0) return 0
+  const ratio = Math.min(1, Math.max(0, (clientX - trackLeft) / trackWidth))
+  return Math.round(ratio * (total - 1))
+}
+
+/** 圆点该停在轨道的百分之几。过完了那一屏停在最右 */
+export function thumbPercent(index: number, total: number): number {
+  if (total <= 1) return index >= total ? 100 : 0
+  return (Math.min(index, total - 1) / (total - 1)) * 100
+}
+
 export function FlashDeck({
   cards,
   showSource,
   scopeLabel,
   hideEnglish,
   hideChinese,
+  isEditMode,
+  onUpdateWord,
+  onUpdateSentence,
   canSpeak,
   speakingId,
   onSpeak,
   contextOf,
   onExit,
+  initialIndex,
+  onIndexChange,
   paddingBottom
 }: FlashDeckProps) {
   /** 第几张；等于 cards.length 时是「过完了」那一屏 */
-  const [index, setIndex] = useState(0)
+  const [index, setIndex] = useState(initialIndex)
   /** 刚才是往前翻还是往后翻，决定新卡从哪边进来 */
   const [dir, setDir] = useState<'next' | 'prev'>('next')
   const [drag, setDrag] = useState(0)
@@ -108,18 +139,27 @@ export function FlashDeck({
   const total = cards.length
   const atEnd = index >= total
 
-  const go = useCallback(
-    (step: -1 | 1) => {
-      setIndex((i) => Math.max(0, Math.min(total, i + step)))
-      setDir(step > 0 ? 'next' : 'prev')
+  const jump = useCallback(
+    (to: number) => {
+      setIndex((i) => {
+        const next = Math.max(0, Math.min(total, to))
+        if (next !== i) setDir(next > i ? 'next' : 'prev')
+        return next
+      })
     },
     [total]
   )
+  const go = useCallback((step: -1 | 1) => jump(index + step), [jump, index])
 
   // 卡片少了（编辑模式里删掉了几条）别停在不存在的那一张上
   useEffect(() => {
     if (index > total) setIndex(total)
   }, [index, total])
+
+  // 翻到哪了报给外面记着
+  useEffect(() => {
+    onIndexChange(index)
+  }, [index, onIndexChange])
 
   /** 键盘：左右箭头翻页，Esc 退出。手机上用不到，浏览器里试的时候顺手 */
   useEffect(() => {
@@ -143,6 +183,9 @@ export function FlashDeck({
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return
+    // 正在改的那一格里横着拖是在挪光标 / 选字，不是要翻页（和左滑删除同一条规矩）
+    const field = (e.target as HTMLElement).closest('input, textarea')
+    if (field && document.activeElement === field) return
     start.current = { x: e.clientX, y: e.clientY }
     engaged.current = null
     swiped.current = false
@@ -197,7 +240,7 @@ export function FlashDeck({
       className="flex-1 min-h-0 flex flex-col overflow-y-auto scroll-area"
       style={{ paddingBottom }}
     >
-      {/* 进度：第几张 / 共几张。就一行字，不画进度条 —— 数字已经说清楚了 */}
+      {/* 进度：第几张 / 共几张。就一行字，条在底下 */}
       <div className="shrink-0 text-center text-xs text-ink-muted pt-3 tabular-nums">
         {atEnd ? `${total} / ${total}` : `${index + 1} / ${total}`}
       </div>
@@ -207,7 +250,8 @@ export function FlashDeck({
           <div
             /*
               手指按在卡片上横着滑就换卡。touch-action 留着竖向：卡片高过屏幕时还能上下滚。
-              key 跟着 index 走 —— 换卡 = 换一个元素，入场动画重新播一遍，翻开状态也自然归零
+              key 跟着 index 走 —— 换卡 = 换一个元素，入场动画重新播一遍，翻开状态也自然归零，
+              编辑中没落盘的改动由那一层的卸载清理函数兜住
             */
             key={index}
             className={`flash-card ${dir === 'next' ? 'flash-in-next' : 'flash-in-prev'}`}
@@ -233,6 +277,9 @@ export function FlashDeck({
               showSource={showSource}
               hideEnglish={hideEnglish}
               hideChinese={hideChinese}
+              isEditMode={isEditMode}
+              onUpdateWord={onUpdateWord}
+              onUpdateSentence={onUpdateSentence}
               canSpeak={canSpeak}
               speaking={speakingId === card.id}
               onSpeak={() => onSpeak(card)}
@@ -248,10 +295,7 @@ export function FlashDeck({
             <div className="mt-6 flex justify-center gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setDir('prev')
-                  setIndex(0)
-                }}
+                onClick={() => jump(0)}
                 className="px-4 py-2 rounded-lg text-sm font-medium bg-accent-100 text-accent-800 hover:bg-accent-200"
               >
                 再来一遍
@@ -268,26 +312,70 @@ export function FlashDeck({
         )}
       </div>
 
-      {/* 两颗箭头常驻：滑动手感我在这个环境里验不了，箭头是保底的路 */}
-      <div className="shrink-0 flex items-center justify-center gap-8 pb-4">
-        <button
-          type="button"
-          onClick={() => go(-1)}
-          disabled={index === 0}
-          aria-label="上一张"
-          className="p-3 rounded-full text-ink-muted hover:bg-stone-100 disabled:opacity-30 disabled:hover:bg-transparent"
-        >
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-        <button
-          type="button"
-          onClick={() => go(1)}
-          disabled={atEnd}
-          aria-label="下一张"
-          className="p-3 rounded-full text-ink-muted hover:bg-stone-100 disabled:opacity-30 disabled:hover:bg-transparent"
-        >
-          <ChevronRight className="w-6 h-6" />
-        </button>
+      <Scrubber total={total} index={index} onJump={jump} />
+    </div>
+  )
+}
+
+/**
+ * 底下那条进度条：一条细线、一颗圆点。拖圆点或点线上任意一处直接跳到那张，卡片实时跟着换。
+ * 用户 2026-09-09 要的：「卡片有那么多，把箭头换成横着的进度条，可以通过滑动快速移动位置」。
+ *
+ * 不用 <input type="range">：各家浏览器的样子不一样、拇指那颗点在安卓上偏小，自己画三个 div 更省事。
+ * 整条带子高 44px 好按，线本身只有 3px。
+ */
+function Scrubber({ total, index, onJump }: { total: number; index: number; onJump: (i: number) => void }) {
+  const track = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false)
+
+  const jumpAt = useCallback(
+    (clientX: number) => {
+      const r = track.current?.getBoundingClientRect()
+      if (!r) return
+      onJump(scrubIndex(clientX, r.left, r.width, total))
+    },
+    [onJump, total]
+  )
+
+  const pct = thumbPercent(index, total)
+
+  return (
+    <div
+      className="shrink-0 px-8 pb-2 select-none"
+      /* 整条都归手指：横着拖是在挑卡，不让页面抢去滚 */
+      style={{ touchAction: 'none' }}
+      role="slider"
+      aria-label="翻到第几张"
+      aria-valuemin={1}
+      aria-valuemax={total}
+      aria-valuenow={Math.min(index + 1, total)}
+      onPointerDown={(e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return
+        dragging.current = true
+        try {
+          e.currentTarget.setPointerCapture?.(e.pointerId)
+        } catch {
+          /* 捕获不到就算了 */
+        }
+        jumpAt(e.clientX)
+      }}
+      onPointerMove={(e) => {
+        if (dragging.current) jumpAt(e.clientX)
+      }}
+      onPointerUp={() => {
+        dragging.current = false
+      }}
+      onPointerCancel={() => {
+        dragging.current = false
+      }}
+    >
+      <div ref={track} className="relative h-11 flex items-center">
+        <div className="absolute inset-x-0 h-[3px] rounded-full bg-stone-200" />
+        <div className="absolute left-0 h-[3px] rounded-full bg-accent-400" style={{ width: `${pct}%` }} />
+        <div
+          className="absolute w-5 h-5 rounded-full bg-white border-2 border-accent-500 shadow-sm"
+          style={{ left: `calc(${pct}% - 10px)` }}
+        />
       </div>
     </div>
   )
@@ -298,6 +386,9 @@ function FlashCardView({
   showSource,
   hideEnglish,
   hideChinese,
+  isEditMode,
+  onUpdateWord,
+  onUpdateSentence,
   canSpeak,
   speaking,
   onSpeak,
@@ -307,6 +398,9 @@ function FlashCardView({
   showSource: boolean
   hideEnglish: boolean
   hideChinese: boolean
+  isEditMode: boolean
+  onUpdateWord: (word: string, updates: Partial<WordNote> & { grammar?: string }) => void
+  onUpdateSentence?: (id: string, updates: Partial<Pick<Sentence, 'grammar' | 'meaning'>>) => void
   canSpeak: boolean
   speaking: boolean
   onSpeak: () => void
@@ -318,6 +412,46 @@ function FlashCardView({
   const showChinese = !hideChinese || revealed
 
   const context = card.kind === 'vocab' && card.anchor ? contextOf(card.anchor) : null
+
+  // —— 编辑模式的几格：本地存着，失焦 / 离开编辑 / 换卡时落盘。和卡片墙上的卡同一套做法 ——
+  const [localPos, setLocalPos] = useState(card.kind === 'vocab' ? card.pos ?? '' : '')
+  const [localPhonetic, setLocalPhonetic] = useState(card.kind === 'vocab' ? card.phonetic ?? '' : '')
+  const [localDefinition, setLocalDefinition] = useState(card.kind === 'vocab' ? card.definition ?? '' : '')
+  const [localUsage, setLocalUsage] = useState(card.kind === 'vocab' ? card.usage ?? '' : '')
+  const [localGrammar, setLocalGrammar] = useState(card.kind === 'sentence' ? card.grammar ?? '' : '')
+  const [localMeaning, setLocalMeaning] = useState(card.kind === 'sentence' ? card.meaning ?? '' : '')
+
+  const handleSave = () => {
+    if (card.kind === 'vocab') {
+      const nextPos = localPos.trim() || undefined
+      const nextPhonetic = localPhonetic.trim() || undefined
+      const nextDef = localDefinition.trim() || undefined
+      const nextUsage = localUsage.trim() || undefined
+      if (card.isPhrase) {
+        if (nextDef === card.definition && nextUsage === card.usage) return
+        onUpdateWord(card.word, { definition: nextDef, grammar: nextUsage })
+        return
+      }
+      if (nextPos === card.pos && nextPhonetic === card.phonetic && nextDef === card.definition) return
+      onUpdateWord(card.word, { pos: nextPos, phonetic: nextPhonetic, definition: nextDef })
+      return
+    }
+    const nextGrammar = localGrammar.trim()
+    const nextMeaning = localMeaning.trim()
+    if (nextGrammar === (card.grammar ?? '') && nextMeaning === (card.meaning ?? '')) return
+    onUpdateSentence?.(card.id, { grammar: nextGrammar, meaning: nextMeaning })
+  }
+
+  /**
+   * 离开编辑模式、或这张卡被换掉时，把还没提交的改动落下去。
+   * 手机上改完直接滑到下一张，输入框往往来不及失焦就被卸掉了 —— 靠这个清理函数兜住。
+   */
+  const saveRef = useRef(handleSave)
+  saveRef.current = handleSave
+  useEffect(() => {
+    if (!isEditMode) return
+    return () => saveRef.current()
+  }, [isEditMode])
 
   return (
     <div
@@ -347,36 +481,81 @@ function FlashCardView({
               ) : (
                 <span className="text-ink-muted/70 text-sm">点击显示英文</span>
               )}
-              {!card.isPhrase && showEnglish && card.phonetic && (
+              {card.isPhrase ? null : isEditMode ? (
+                <input
+                  type="text"
+                  className="field-inline text-sm text-ink-muted italic font-mono mt-1"
+                  placeholder="音标"
+                  aria-label="音标"
+                  value={localPhonetic}
+                  onChange={(e) => setLocalPhonetic(e.target.value)}
+                  onBlur={handleSave}
+                />
+              ) : showEnglish && card.phonetic ? (
                 <span className="text-sm text-ink-muted italic font-mono mt-1 block">{card.phonetic}</span>
-              )}
+              ) : null}
             </div>
-            {card.isPhrase
-              ? showEnglish && (
-                  <span className="shrink-0 px-2 py-0.5 rounded-full bg-accent-100 text-accent-800 text-xs font-medium">
-                    短语
-                  </span>
-                )
-              : card.pos &&
-                showEnglish && (
-                  <span className="shrink-0 px-2 py-0.5 rounded-full bg-stone-200/80 text-ink text-xs font-medium">
-                    {card.pos}
-                  </span>
-                )}
+            {card.isPhrase ? (
+              showEnglish && (
+                <span className="shrink-0 px-2 py-0.5 rounded-full bg-accent-100 text-accent-800 text-xs font-medium">
+                  短语
+                </span>
+              )
+            ) : isEditMode ? (
+              <span className="pos-fit shrink-0" data-value={localPos || '词性'}>
+                <input
+                  type="text"
+                  size={1}
+                  className="field-pos"
+                  placeholder="词性"
+                  aria-label="词性"
+                  value={localPos}
+                  onChange={(e) => setLocalPos(e.target.value)}
+                  onBlur={handleSave}
+                />
+              </span>
+            ) : (
+              card.pos &&
+              showEnglish && (
+                <span className="shrink-0 px-2 py-0.5 rounded-full bg-stone-200/80 text-ink text-xs font-medium">
+                  {card.pos}
+                </span>
+              )
+            )}
           </div>
 
-          {(card.definition || hideChinese) && (
+          {(isEditMode || card.definition || hideChinese) && (
             <div className="mt-3 pt-3 border-t border-stone-100 min-h-[32px]">
-              {showChinese && card.definition ? (
+              {isEditMode ? (
+                <AutoTextarea
+                  className="field-inline text-base text-ink-muted leading-snug"
+                  placeholder="释义 / 备注"
+                  aria-label="释义"
+                  value={localDefinition}
+                  onChange={setLocalDefinition}
+                  onBlur={handleSave}
+                />
+              ) : showChinese && card.definition ? (
                 <span className="text-base text-ink-muted leading-snug block">{card.definition}</span>
               ) : showChinese ? null : (
                 <span className="text-ink-muted/60 text-xs">点击显示释义</span>
               )}
             </div>
           )}
-          {card.isPhrase && card.usage && showChinese && (
+          {card.isPhrase && (isEditMode || (card.usage && showChinese)) && (
             <div className="mt-2">
-              <span className="text-sm text-stone-500 leading-snug block">{card.usage}</span>
+              {isEditMode ? (
+                <AutoTextarea
+                  className="field-inline text-sm text-stone-500 font-sans leading-snug"
+                  placeholder="用法 / 搭配"
+                  aria-label="短语用法"
+                  value={localUsage}
+                  onChange={setLocalUsage}
+                  onBlur={handleSave}
+                />
+              ) : (
+                <span className="text-sm text-stone-500 leading-snug block">{card.usage}</span>
+              )}
             </div>
           )}
 
@@ -423,18 +602,43 @@ function FlashCardView({
               <span className="text-ink-muted/70 text-sm">点击显示英文</span>
             )}
           </div>
-          {/* 句型 / 语法是中文讲解、也是答案，和卡片墙一样：两种遮罩下都遮 */}
-          {card.grammar && showEnglish && showChinese && (
-            <p className="mt-2 text-sm text-stone-500 font-sans">{card.grammar}</p>
-          )}
-          {(card.meaning || hideChinese) && (
-            <div className="mt-3 pt-3 border-t border-stone-100 min-h-[32px]">
-              {showChinese && card.meaning ? (
-                <span className="text-base text-ink-muted leading-snug block">{card.meaning}</span>
-              ) : showChinese ? null : (
-                <span className="text-ink-muted/60 text-xs">点击显示翻译</span>
+          {isEditMode ? (
+            <>
+              <AutoTextarea
+                className="field-inline mt-2 text-sm text-stone-500 font-sans"
+                placeholder="句型 / 语法"
+                aria-label="句型语法"
+                value={localGrammar}
+                onChange={setLocalGrammar}
+                onBlur={handleSave}
+              />
+              <div className="mt-3 pt-3 border-t border-stone-100 min-h-[32px]">
+                <AutoTextarea
+                  className="field-inline text-base text-ink-muted leading-snug"
+                  placeholder="翻译 / 释义"
+                  aria-label="翻译"
+                  value={localMeaning}
+                  onChange={setLocalMeaning}
+                  onBlur={handleSave}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              {/* 句型 / 语法是中文讲解、也是答案，和卡片墙一样：两种遮罩下都遮 */}
+              {card.grammar && showEnglish && showChinese && (
+                <p className="mt-2 text-sm text-stone-500 font-sans">{card.grammar}</p>
               )}
-            </div>
+              {(card.meaning || hideChinese) && (
+                <div className="mt-3 pt-3 border-t border-stone-100 min-h-[32px]">
+                  {showChinese && card.meaning ? (
+                    <span className="text-base text-ink-muted leading-snug block">{card.meaning}</span>
+                  ) : showChinese ? null : (
+                    <span className="text-ink-muted/60 text-xs">点击显示翻译</span>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </>
       )}
