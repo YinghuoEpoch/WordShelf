@@ -3,7 +3,7 @@ import { useSpeak } from '../hooks/useSpeak'
 import { SpeechNotice } from './SpeechNotice'
 import { tokenizeLine } from '../utils/tokenize'
 import { splitEdgePunctuation, stripEdgePunctuation } from '../utils/punctuation'
-import { BAND_SUB } from './chrome'
+import { BAND_SUB, CHROME_STACK } from './chrome'
 import { readerThemeStyles } from './theme'
 import type { NotesMap, ReaderSettings, Sentence, WordNote } from '../types'
 import type { PhraseView } from '../utils/annotationViews'
@@ -392,13 +392,30 @@ function LyricEditorInner({
    * 顺序上和 App 里那个开合 hook 不打架：子组件的 layout effect 先跑，
    * 它那边记顶端词时看到的已经是补偿过的位置。
    */
+  /**
+   * 沉浸里顶栏露着（宽屏点空白叫出来的那 3 秒）：滚动容器的开头垫一段顶栏那么高，
+   * 滚到顶时第一行在浮着的顶栏底下露出来（第一百零三节，用户要的「像手机那样」）。
+   * 只在露着时垫，收了就撤 —— 他在两个方案里选的这个。窄屏沉浸里顶栏从不露，这一格恒为 false，
+   * 手机上一个字不变。垫子的加减和容器上沿的挪动**合在一趟**补进 scrollTop（下面那个 effect）。
+   */
+  const chromePad = immersive && chromeVisible
   const containerTopRef = useRef<number | null>(null)
+  const containerPadRef = useRef<number | null>(null)
   useLayoutEffect(() => {
     const el = scrollContainerRef.current
+    if (!el) return
+    // 垫子此刻多厚。只在这里记，别放进下面那个每次提交都跑的 effect —— 读 computed style 会强制算样式
+    const padNow = parseFloat(getComputedStyle(el).paddingTop) || 0
+    const padPrev = containerPadRef.current
+    containerPadRef.current = padNow
     const prev = containerTopRef.current
-    if (!el || prev === null) return
+    if (prev === null || padPrev === null) return
     const newTop = el.getBoundingClientRect().top
-    const delta = newTop - prev
+    /*
+      上沿挪了多少 + 垫子变了多少，加在一起补一次。宽屏进沉浸时顶栏先露着：上沿 -C、垫子 +C，
+      合起来 0，文首附近也不会被 scrollTop 的 0 夹住；顶栏自动收掉时只剩 -C，文首附近会动一下，他接受
+    */
+    const delta = newTop - prev + (padNow - padPrev)
     const scrollBefore = el.scrollTop
     if (Math.abs(delta) > 0.5) el.scrollTop += delta
 
@@ -446,7 +463,7 @@ function LyricEditorInner({
     sample(0)
     const timers = [150, 500, 1200].map((ms) => setTimeout(() => sample(ms), ms))
     return () => timers.forEach(clearTimeout)
-  }, [immersive])
+  }, [immersive, chromePad])
   useLayoutEffect(() => {
     containerTopRef.current = scrollContainerRef.current?.getBoundingClientRect().top ?? null
   })
@@ -1052,7 +1069,9 @@ function LyricEditorInner({
           willChange: 'transform',
           transform: 'translateZ(0)',
           overscrollBehaviorY: 'contain',
-          WebkitOverflowScrolling: 'touch'
+          WebkitOverflowScrolling: 'touch',
+          // 沉浸里顶栏露着那会儿给开头垫的那段，见 chromePad
+          paddingTop: chromePad ? `calc(${CHROME_STACK})` : undefined
         }}
       >
       <div
