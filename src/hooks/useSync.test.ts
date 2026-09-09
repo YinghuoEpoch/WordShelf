@@ -17,6 +17,25 @@ const 一分钟 = 60 * 1000
 /** 默认场景：自动触发、没有别的轮次在跑、离上次自动同步已经很久 */
 const 基准 = { silent: true, running: false, now: 10_000_000, lastAutoAt: 0 }
 
+describe('设置里的「自动同步」开关（2026-09-09 用户要的）', () => {
+  it('关着：自动触发的一律跳过，也不改约 —— 关了就是关了', () => {
+    expect(decideAutoSync({ ...基准, auto: false })).toEqual({ kind: 'skip' })
+    // 哪怕离上次很久、没有别的轮次在跑，也不走
+    expect(decideAutoSync({ ...基准, auto: false, lastAutoAt: 0, running: false })).toEqual({
+      kind: 'skip'
+    })
+  })
+
+  it('关着：手动那颗照旧走，不受这个开关管', () => {
+    expect(decideAutoSync({ ...基准, auto: false, silent: false })).toEqual({ kind: 'go' })
+  })
+
+  it('不传这一格按开算 —— 老调用点、老数据都不受影响', () => {
+    expect(decideAutoSync(基准)).toEqual({ kind: 'go' })
+    expect(decideAutoSync({ ...基准, auto: true })).toEqual({ kind: 'go' })
+  })
+})
+
 describe('手动那颗按钮', () => {
   it('不受最小间隔限制 —— 人明确要同步时不该被拦', () => {
     const 刚同步完 = { ...基准, silent: false, lastAutoAt: 基准.now - 1000 }

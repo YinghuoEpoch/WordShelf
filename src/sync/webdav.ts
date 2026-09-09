@@ -23,10 +23,15 @@ export interface SyncConfig {
   password: string
   /** 放在哪个文件夹里。默认 lyric-vocab */
   folder: string
+  /**
+   * 要不要自动同步（回到 app、改完东西几秒后）。关了就只剩设置里手动那颗。
+   * 用户 2026-09-09 要的开关。默认开 —— 老数据里没这一格，读出来按开算。
+   */
+  auto: boolean
 }
 
 export function defaultSyncConfig(): SyncConfig {
-  return { username: '', password: '', folder: 'lyric-vocab' }
+  return { username: '', password: '', folder: 'lyric-vocab', auto: true }
 }
 
 const STORAGE_KEY = 'lyric-vocab-sync'
@@ -45,7 +50,9 @@ export function loadSyncConfig(): SyncConfig {
     return {
       username: str(p?.username, d.username),
       password: str(p?.password, d.password),
-      folder: str(p?.folder, d.folder)
+      folder: str(p?.folder, d.folder),
+      // 只有明确存了 false 才算关；没这一格（老数据）或存坏了都按开
+      auto: p?.auto !== false
     }
   } catch {
     return defaultSyncConfig()

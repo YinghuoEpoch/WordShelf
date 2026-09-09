@@ -2,6 +2,13 @@ import { useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import type { SyncConfig } from '../sync'
 import type { SyncStatus } from '../hooks/useSync'
+import { Choices } from './Choices'
+
+/** 「自动同步」开关的两档（用户 2026-09-09 要的） */
+const AUTO_SYNC = [
+  { id: 'on', label: '自动同步' },
+  { id: 'off', label: '只手动同步' }
+] as const
 
 /**
  * 设置里填坚果云凭证、以及手动同步一次的地方。
@@ -36,6 +43,16 @@ export function SyncPanel({
    * 而这一格恰恰是要从坚果云那边粘贴过来的。
    */
   const [showPwd, setShowPwd] = useState(value.password.trim() === '')
+
+  /**
+   * 「自动同步」开关**不走草稿、点了当场生效**（和发音那两个开关一个路子）。
+   * 草稿那套是给三格凭证的 —— 粘贴的长串改坏了没有撤销。开关只有两档，误点再点一下就回来了。
+   * 存的是「已存的那份 + 新开关」，不带草稿里还没保存的凭证；草稿里同步改一下，免得被算成「改了没保存」。
+   */
+  const setAuto = (auto: boolean) => {
+    setDraft((d) => ({ ...d, auto }))
+    onSave({ ...value, auto })
+  }
 
   const set = (patch: Partial<SyncConfig>) => setDraft((d) => ({ ...d, ...patch }))
   const field =
@@ -117,6 +134,19 @@ export function SyncPanel({
         <p className="px-1 text-xs text-ink-muted">改了还没保存，先点「保存」再同步。</p>
       ) : null}
 
+      <div className="space-y-1.5 pt-1">
+        <Choices
+          value={value.auto ? 'on' : 'off'}
+          options={AUTO_SYNC}
+          onPick={(v) => setAuto(v === 'on')}
+        />
+        <p className="text-xs text-ink-muted leading-relaxed">
+          {value.auto
+            ? '回到 app、改完东西几秒后会自动同步；两次自动同步至少隔一分钟。'
+            : '只有点下面这颗才同步。改了东西记得点一下，另一台才拿得到。'}
+        </p>
+      </div>
+
       <button
         type="button"
         onClick={onSync}
@@ -151,9 +181,7 @@ export function SyncPanel({
       </p>
 
       <p className="text-xs text-ink-muted leading-relaxed">
-        填好就不用管了。三个时机自动同步：回到 app、改完东西几秒后、上面那颗按钮。
-        两次自动同步至少隔一分钟，传之前会压缩。
-        两台各加各的都保留，只有两边改了同一条才取舍，结果会报在上面。发音录音不同步。
+        传之前会压缩。两台各加各的都保留，只有两边改了同一条才取舍，结果会报在上面。发音录音不同步。
       </p>
     </div>
   )
