@@ -114,7 +114,8 @@ function VocabularyDashboardInner({
   const [reviewMode, setReviewMode] = useState<'vocab' | 'sentence'>('vocab')
   /**
    * 抽卡：一次只看一张（用户 2026-09-09 要的，见 FlashDeck）。
-   * 换一篇、切词/句退回卡片墙；**编辑模式不退** —— 卡上的格子直接能改（第二版，用户要的）。
+   * 换一篇退回卡片墙；**切词/句不退**（第三版，用户报的：「切换词句它会退回列表」），
+   * 换成另一叠、从那一叠记下的位置接着翻；**编辑模式也不退** —— 卡上的格子直接能改（第二版）。
    */
   const [flashcards, setFlashcards] = useState(false)
   /** 左滑露出删除的那张卡。同时只开一张，不然满屏都是红按钮 */
@@ -273,7 +274,7 @@ function VocabularyDashboardInner({
   useBackHandler(flashcards, BackPriority.flashcards, () => setFlashcards(false))
   useEffect(() => {
     setFlashcards(false)
-  }, [reviewTarget?.id, reviewMode])
+  }, [reviewTarget?.id])
 
   /**
    * 抽卡上的原句：按文档缓存分好的词表，正文没改就不重算。
