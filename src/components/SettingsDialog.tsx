@@ -17,6 +17,7 @@ import {
 import { getChromeShifts, type ChromeShiftRecord } from '../chromeShift'
 import { CloudTtsPanel } from './CloudTtsPanel'
 import { SyncPanel } from './SyncPanel'
+import { Choices } from './Choices'
 import {
   measureSyncData,
   estimateMonthlyUpload,
@@ -550,37 +551,6 @@ function ChromeShiftReadout({ records }: { records: ChromeShiftRecord[] }) {
           sa-top 变了，是原生在翻转之后推了新的留白。
         </p>
       </Section>
-    </div>
-  )
-}
-
-/** 一排等宽的单选按钮。字体和纸色长得一样，所以收成一个 */
-function Choices<T extends string>({
-  value,
-  options,
-  onPick
-}: {
-  value: T
-  options: ReadonlyArray<{ id: T; label: string }>
-  onPick: (id: T) => void
-}) {
-  return (
-    <div className="flex gap-1.5">
-      {options.map((o) => (
-        <button
-          key={o.id}
-          type="button"
-          onClick={() => onPick(o.id)}
-          className={
-            'flex-1 h-8 rounded-lg text-xs font-medium border transition-colors ' +
-            (value === o.id
-              ? 'border-accent-500 bg-accent-50 text-accent-800'
-              : 'border-paper-border bg-white text-ink-muted hover:bg-stone-100')
-          }
-        >
-          {o.label}
-        </button>
-      ))}
     </div>
   )
 }
@@ -1124,9 +1094,10 @@ export function SettingsDialog({
                     </span>
                     <span className="block text-xs text-ink-muted truncate">
                       {isSyncReady(syncConfig)
-                        ? syncStatus.lastAt > 0
-                          ? `上次同步 ${new Date(syncStatus.lastAt).toLocaleString('zh-CN')}`
-                          : '还没同步过'
+                        ? (syncConfig.auto ? '' : '自动同步已关 · ') +
+                          (syncStatus.lastAt > 0
+                            ? `上次同步 ${new Date(syncStatus.lastAt).toLocaleString('zh-CN')}`
+                            : '还没同步过')
                         : '手机和平板通过坚果云共用同一份数据'}
                     </span>
                   </span>

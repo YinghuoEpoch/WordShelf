@@ -71,12 +71,18 @@ export function decideAutoSync(o: {
   now: number
   /** 上一次**自动**同步是什么时候。手动的不记 */
   lastAutoAt: number
+  /**
+   * 设置里的「自动同步」开关（SyncConfig.auto）。关了自动触发的一律不走、也不改约 ——
+   * 用户明说了要「关掉就只有点那颗才同步」。手动的不看这一格。不传按开算
+   */
+  auto?: boolean
   minGapMs?: number
   runningRetryMs?: number
 }): SyncGate {
   const minGap = o.minGapMs ?? MIN_AUTO_GAP_MS
   const retry = o.runningRetryMs ?? RUNNING_RETRY_MS
 
+  if (o.silent && o.auto === false) return { kind: 'skip' }
   if (o.running) return o.silent ? { kind: 'retry', afterMs: retry } : { kind: 'skip' }
   if (!o.silent) return { kind: 'go' }
 
@@ -122,7 +128,8 @@ export function useSync(onDataChanged: () => void) {
         silent,
         running: running.current,
         now: Date.now(),
-        lastAutoAt: lastAutoAt.current
+        lastAutoAt: lastAutoAt.current,
+        auto: cfg.auto
       })
       if (gate.kind === 'skip') return
       if (gate.kind === 'retry') {
@@ -176,7 +183,9 @@ export function useSync(onDataChanged: () => void) {
   /** 数据改过了，过一会儿传上去。期间又改，就重新计时 —— 连续编辑只在停手后传一次 */
   const notifyChanged = useCallback(() => {
     if (suppress.current) return
-    if (!isSyncReady(loadSyncConfig())) return
+    const cfg = loadSyncConfig()
+    // 自动关着就连定时器都不排。排了也会被闸门拦下，这里只是省事
+    if (!isSyncReady(cfg) || !cfg.auto) return
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => {
       timer.current = null
