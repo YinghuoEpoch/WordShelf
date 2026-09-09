@@ -29,6 +29,8 @@ export const BackPriority = {
   wordDrawer: 70,
   /** 左右侧栏 */
   panel: 60,
+  /** 复习页的抽卡（叠在侧栏之下：窄屏上侧栏浮层先关，再退出抽卡） */
+  flashcards: 55,
   /** 编辑全文模式 */
   editMode: 50
 } as const

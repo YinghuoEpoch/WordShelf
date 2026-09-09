@@ -431,3 +431,18 @@ body {
 .field-sheet::placeholder {
   color: rgba(92, 92, 92, 0.45);
 }
+
+/*
+  抽卡：换到下一张时新卡淡入并从右边（或左边）轻轻滑进来。
+  只有入场，没有出场 —— 屏幕上自始至终只有一张卡在动，和左滑删除同一个理由。
+*/
+@keyframes flash-in-next {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes flash-in-prev {
+  from { opacity: 0; transform: translateX(-24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.flash-in-next { animation: flash-in-next 180ms ease-out; }
+.flash-in-prev { animation: flash-in-prev 180ms ease-out; }
