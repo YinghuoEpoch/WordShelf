@@ -530,7 +530,13 @@ function VocabularyDashboardInner({
           onSpeak={(c) => (c.kind === 'vocab' ? speak(c.id, c.word, { lookup: true }) : speak(c.id, c.text))}
           contextOf={contextOf}
           onExit={() => setFlashcards(false)}
-          paddingBottom="calc(1rem + var(--sa-bottom))"
+          /*
+            按导航栏**本来**多高让，不按此刻多高（--sa-bottom）。沉浸时导航栏藏起来 --sa-bottom 掉到 0，
+            底下这条让出来的收回去，居中的卡片就往下沉半截 —— 平板三键导航 48px，沉 24px，他看出来了。
+            按本来多高让，这一块的高度就和导航栏在不在、原生什么时候报上来都无关；代价是沉浸时最底下
+            留着导航栏那么高的一条空白，卡片不动比那条空白值钱
+          */
+          paddingBottom="calc(1rem + var(--sa-bottom-real))"
         />
       ) : (
       <div

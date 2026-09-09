@@ -151,6 +151,8 @@ body {
   --sa-top-real: env(safe-area-inset-top, 0px);
   --sa-right: env(safe-area-inset-right, 0px);
   --sa-bottom: env(safe-area-inset-bottom, 0px);
+  /* 导航栏**本来**多高：沉浸时 --sa-bottom 掉到 0，这一格不动。真值由 safeArea.ts 填，抽卡底下按它让 */
+  --sa-bottom-real: env(safe-area-inset-bottom, 0px);
   --sa-left: env(safe-area-inset-left, 0px);
   /*
    * 底边有两个数，别混用：
