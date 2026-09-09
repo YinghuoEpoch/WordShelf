@@ -1,4 +1,5 @@
 import type { Annotation, LyricPage } from '../types'
+import { isOnShelf } from '../utils/shelf'
 import { isOrphanAnnotation } from '../types'
 import { sortByText } from '../utils/annotationOrder'
 
@@ -87,7 +88,7 @@ export function getFolderReviewData(
   pages: LyricPage[],
   annotations: Annotation[]
 ): { high: FolderVocabItem[]; normal: FolderVocabItem[] } {
-  const pagesInBook = pages.filter((p) => p.bookId === bookId && !p.deletedAt)
+  const pagesInBook = pages.filter((p) => p.bookId === bookId && isOnShelf(p))
   const titleOf = new Map(pagesInBook.map((p) => [p.id, p.title || '未命名']))
 
   const inBook = sortByText(

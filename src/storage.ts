@@ -17,6 +17,7 @@ import {
   SAMPLE_NOTES,
   SAMPLE_SENTENCES
 } from './sampleData'
+import { isOnShelf } from './utils/shelf'
 
 export const STORAGE_KEY = 'lyric-vocab-data'
 const KEY = STORAGE_KEY
@@ -256,8 +257,56 @@ export async function restorePage(pageId: string): Promise<AppData> {
   data.pages = data.pages.map((p) => {
     if (p.id !== pageId) return p
     const { deletedAt: _removed, ...rest } = p
-    // 如果原父文库已不存在或仍在回收站，则把文档提升到根级
-    const parent = data.books.find((b) => b.id === rest.bookId && !b.deletedAt)
+    // 如果原父文库已不存在、仍在回收站或在归档里，则把文档提升到根级
+    const parent = data.books.find((b) => b.id === rest.bookId && isOnShelf(b))
+    return parent ? rest : { ...rest, bookId: null }
+  })
+  return commit(data)
+}
+
+/*
+ * 归档（用户 2026-09-09 要的）。和回收站同一套做法：打个 archivedAt，不从数组里拿走。
+ * 四个函数一一对应 moveBookToTrash / movePageToTrash / restoreBook / restorePage。
+ * 归档文库时它下面的文档一起归档；取出文库时一起取出。
+ */
+
+export async function archiveBook(bookId: string): Promise<AppData> {
+  const data = await ensureLoaded()
+  const archivedAt = Date.now()
+  data.books = data.books.map((b) => (b.id === bookId ? { ...b, archivedAt } : b))
+  data.pages = data.pages.map((p) => (p.bookId === bookId ? { ...p, archivedAt } : p))
+  return commit(data)
+}
+
+export async function archivePage(pageId: string): Promise<AppData> {
+  const data = await ensureLoaded()
+  const archivedAt = Date.now()
+  data.pages = data.pages.map((p) => (p.id === pageId ? { ...p, archivedAt } : p))
+  return commit(data)
+}
+
+export async function unarchiveBook(bookId: string): Promise<AppData> {
+  const data = await ensureLoaded()
+  data.books = data.books.map((b) => {
+    if (b.id !== bookId) return b
+    const { archivedAt: _removed, ...rest } = b
+    return rest
+  })
+  data.pages = data.pages.map((p) => {
+    if (p.bookId !== bookId) return p
+    const { archivedAt: _removed, ...rest } = p
+    return rest
+  })
+  return commit(data)
+}
+
+/** 取出文档。原文库要是还在归档里（或在回收站、已不存在），文档回到根级 —— 和 restorePage 一样 */
+export async function unarchivePage(pageId: string): Promise<AppData> {
+  const data = await ensureLoaded()
+  data.pages = data.pages.map((p) => {
+    if (p.id !== pageId) return p
+    const { archivedAt: _removed, ...rest } = p
+    const parent = data.books.find((b) => b.id === rest.bookId && isOnShelf(b))
     return parent ? rest : { ...rest, bookId: null }
   })
   return commit(data)

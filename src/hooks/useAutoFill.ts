@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { isOnShelf } from '../utils/shelf'
 import type { AppData, Annotation } from '../types'
 import { buildWordList } from '../utils/reconcile'
 import { getAppData } from '../storage'
@@ -55,7 +56,7 @@ export function useAutoFill({ appData, reviewTarget, writeAnnotation }: UseAutoF
   /** 当前复习范围覆盖哪些文档 */
   const scopePageIds = useMemo(() => {
     if (!reviewTarget) return []
-    const alive = appData.pages.filter((p) => !p.deletedAt)
+    const alive = appData.pages.filter(isOnShelf)
     if (reviewTarget.type === 'page') return alive.filter((p) => p.id === reviewTarget.id).map((p) => p.id)
     return alive.filter((p) => p.bookId === reviewTarget.id).map((p) => p.id)
   }, [reviewTarget, appData.pages])

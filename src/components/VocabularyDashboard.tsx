@@ -13,6 +13,7 @@ import { sortByText } from '../utils/annotationOrder'
 import { AutoMark } from './AutoMark'
 import { BAND_SUB } from './chrome'
 import { readerThemeStyles } from './theme'
+import { isOnShelf } from '../utils/shelf'
 import { EditedMark } from './EditedMark'
 import { AutoTextarea } from './AutoTextarea'
 import { getFolderReviewData, getPageReviewData } from '../hooks/getFolderReviewData'
@@ -221,7 +222,7 @@ function VocabularyDashboardInner({
       return [{ title: getPageTitle(reviewTarget.id), pageId: reviewTarget.id, items }]
     }
     // 文库：该 book 下所有页面的句摘，按文档分组
-    const pagesInBook = pages.filter((p) => p.bookId === reviewTarget.id && !p.deletedAt)
+    const pagesInBook = pages.filter((p) => p.bookId === reviewTarget.id && isOnShelf(p))
     const pageIds = new Set(pagesInBook.map((p) => p.id))
     const filtered = sentences.filter((s) => pageIds.has(s.docId))
     if (filtered.length === 0) return []
