@@ -26,3 +26,8 @@ android/app/src/main/assets/capacitor.plugins.json
 
 # 交给用户的 APK 副本，不进版本库
 *.apk
+
+# 签名密钥与密码，绝不进版本库（备份在 D:/code/money/密钥备份/）
+android/keystore/
+android/keystore.properties
+*.aab

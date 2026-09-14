@@ -1,4 +1,4 @@
-package com.colin.lyricvocab;
+package com.yinghuoepoch.wordshelf;
 
 import android.os.Build;
 import android.provider.Settings;
