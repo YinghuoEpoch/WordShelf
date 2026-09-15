@@ -13,7 +13,8 @@ import { sortByText } from './utils/annotationOrder'
 import {
   SAMPLE_BOOK_ID,
   SAMPLE_PAGE_ID,
-  YESTERDAY_ONCE_MORE,
+  SAMPLE_TEXT,
+  SAMPLE_PAGE_TITLE,
   SAMPLE_NOTES,
   SAMPLE_SENTENCES
 } from './sampleData'
@@ -164,8 +165,8 @@ function makeSampleData(): AppData {
     {
       id: SAMPLE_PAGE_ID,
       bookId: SAMPLE_BOOK_ID,
-      title: 'Wish My Life Away',
-      content: YESTERDAY_ONCE_MORE,
+      title: SAMPLE_PAGE_TITLE,
+      content: SAMPLE_TEXT,
       updatedAt: now
     }
   ]

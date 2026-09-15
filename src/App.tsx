@@ -84,7 +84,8 @@ type ReviewTarget = { type: 'page'; id: string } | { type: 'book'; id: string } 
 
 const READER_SETTINGS_KEY = 'lyric-vocab-reader-settings'
 const SENTENCES_KEY = 'user_sentences'
-const USER_AGREEMENT_KEY = 'user_agreement_v1'
+/** 协议正文改了就换版本号，老用户会再看一次（2026-09-15 v1 → v2） */
+const USER_AGREEMENT_KEY = 'user_agreement_v2'
 /** 编辑模式下暂存的「编辑前正文」，用于退出时对账；正常流程走完即清除 */
 const PRE_EDIT_KEY = 'lyric-vocab-pre-edit'
 /** 切词规则变更后的一次性数据迁移标记 */
