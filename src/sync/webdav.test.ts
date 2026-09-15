@@ -108,3 +108,9 @@ describe('isSyncReady', () => {
     expect(isSyncReady({ ...c, folder: '' })).toBe(false)
   })
 })
+
+describe('defaultSyncConfig', () => {
+  it('默认文件夹是「我的坚果云」，和设置页的提示一致', () => {
+    expect(defaultSyncConfig().folder).toBe('我的坚果云')
+  })
+})

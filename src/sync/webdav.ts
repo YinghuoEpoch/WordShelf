@@ -21,7 +21,7 @@ export interface SyncConfig {
   username: string
   /** 应用密码。⚠️ 不是登录密码 */
   password: string
-  /** 放在哪个文件夹里。默认 lyric-vocab */
+  /** 放在哪个文件夹里。默认「我的坚果云」——每个坚果云账号都自带这个文件夹，不用先去建（用户 2026-09-15 定；从前默认 lyric-vocab，和界面提示对不上） */
   folder: string
   /**
    * 要不要自动同步（回到 app、改完东西几秒后）。关了就只剩设置里手动那颗。
@@ -31,7 +31,7 @@ export interface SyncConfig {
 }
 
 export function defaultSyncConfig(): SyncConfig {
-  return { username: '', password: '', folder: 'lyric-vocab', auto: true }
+  return { username: '', password: '', folder: '我的坚果云', auto: true }
 }
 
 const STORAGE_KEY = 'lyric-vocab-sync'

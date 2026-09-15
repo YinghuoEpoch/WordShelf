@@ -1242,11 +1242,7 @@ function LeftSidebarInner({
             </button>
           )}
             </div>
-
-            {/* 底部版权信息：始终贴住目录滚动区域底部 */}
-            <div className="shrink-0 mt-6 mb-2 px-2 text-center text-[11px] text-ink-muted/60 select-none">
-              © 2026 荧惑纪 . All Rights Reserved.
-            </div>
+            {/* 这里原来有一行「© 2026 荧惑纪」，用户 2026-09-15 要求去掉；设置 → 关于 里那份还在 */}
           </div>
         </div>
         {createPortal(
