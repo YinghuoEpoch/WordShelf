@@ -1,9 +1,13 @@
-# 我的文库
+# 我的文库 · WordShelf
 
 **在你真正想读的英文里背单词。**
 
 一个英文精读与复习工具。导入一本书或一段文本，长按取词做笔记，笔记自动汇成复习卡片。
-安卓 App，Capacitor 打包。**[→ 下载最新 APK](../../releases/latest)**
+安卓 App，Capacitor 打包。
+
+**[→ 在 Google Play 购买](https://play.google.com/store/apps/details?id=com.yinghuoepoch.wordshelf)**（上架中，链接待商店审核通过后生效）
+
+> 本仓库只放源码，**不提供安装包**。想用现成的，去 Google Play；想自己编，见下面「开发」。
 
 <p align="center">
   <img src="%E5%AE%A3%E4%BC%A0%E5%9B%BE/3-%E9%95%BF%E6%8C%89%E5%8F%96%E8%AF%8D.png" width="30%" />
@@ -32,7 +36,7 @@
   版权已过期，合法免费
 - **沉浸阅读**：两条顶栏、两条系统栏一起收起来，屏幕上只剩正文。
   平板横屏自动触发，手机手动
-- **外观**：纸色三种、强调色五种、字号 12–24、三种字体
+- **外观**：纸色七种、强调色五种、字号 12–24、三种字体
 
 ### 标
 
@@ -75,7 +79,8 @@
 
 ## 安装
 
-到 [Releases](../../releases/latest) 下载 APK，直接安装。需要 Android 7.0 以上。
+[Google Play](https://play.google.com/store/apps/details?id=com.yinghuoepoch.wordshelf)，付费买断，自动更新。需要 Android 7.0 以上。
+本仓库不提供安装包；源码在这儿，自己编也行（见「开发」）。
 
 首次启动会有一份用户协议。AI 辅助和云端朗读要自备 Key，在设置里填 ——
 **不填也能用**，取词、笔记、复习、内置书库都不依赖它们。
@@ -88,7 +93,7 @@
 ```bash
 npm install
 npm run dev                       # 开发服务器
-npm test                          # 659 项单元测试，约 2 秒
+npm test                          # 830 项单元测试，约 3 秒
 npx tsc -b --force && npm run build   # 提交前必须通过
 ```
 
@@ -108,7 +113,7 @@ localforage 存 IndexedDB，fflate 解 epub，dnd-kit 做文库列表拖拽，Vi
 
 ## 开发笔记
 
-[后续规划.md](后续规划.md) 是这个项目的完整病历 —— 七十四节，
+[后续规划.md](后续规划.md) 是这个项目的完整病历 —— 一百零七节，
 记着每一处改动的来龙去脉，包括判断错的、返工的、做了又撤回的。
 比这份 README 长二十倍，也比它诚实得多。
 
@@ -122,5 +127,7 @@ localforage 存 IndexedDB，fflate 解 epub，dnd-kit 做文库列表拖拽，Vi
 © 2026 荧惑纪. All Rights Reserved.
 
 本仓库开放源码供阅读与学习，**保留所有权利** —— 未经许可，请勿用于再分发或商业用途。
+
+隐私政策见 [PRIVACY.md](PRIVACY.md)：数据只在本机，开发者没有服务器，收不到任何东西。
 
 内置书库的书目来自 [古腾堡计划](https://www.gutenberg.org/)，均为版权已过期的公共领域作品。
