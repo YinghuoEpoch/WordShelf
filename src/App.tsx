@@ -34,6 +34,7 @@ import {
 import { migratePage } from './utils/migrateTokenizer'
 import { importFile } from './importers'
 import { AGREEMENT_CLAUSES, AGREEMENT_TITLE } from './agreement'
+import { isTabletClass } from './utils/deviceClass'
 import { useBackHandler, handleBackPress, BackPriority } from './hooks/useBackHandler'
 import { isLeftSidebarVisible, useIsWide } from './hooks/useWideLayout'
 import { shouldImmerse, useImmersiveReading } from './hooks/useImmersiveReading'
@@ -107,19 +108,29 @@ const RIGHT_WIDTH_DEFAULT = 350
 /** 右栏再窄一张生词卡就挤了（窄屏那 260 是验熟的下限） */
 const RIGHT_WIDTH_MIN = 260
 const RIGHT_WIDTH_MAX = 560
+/**
+ * 首次安装的默认外观（用户 2026-09-15 定）：纸色暖白；字号手机 16、平板 18。
+ * 字号看屏幕短边（deviceClass.ts），不看布局那条 1024 的线 —— 平板竖屏也该是 18。
+ * 老用户存过设置的不受影响，只管没存过的。
+ */
 const defaultReaderSettings: ReaderSettings = {
-  fontSize: 18,
+  fontSize: 16,
   fontFamily: 'sans',
-  theme: 'pure',
+  theme: 'rice',
   accent: 'amber'
+}
+
+function defaultFontSize(): number {
+  return isTabletClass() ? 18 : 16
 }
 
 const ACCENTS: readonly AccentColor[] = ['amber', 'indigo', 'teal', 'rose', 'stone']
 
 function loadReaderSettings(): ReaderSettings {
+  const defaults: ReaderSettings = { ...defaultReaderSettings, fontSize: defaultFontSize() }
   try {
     const raw = localStorage.getItem(READER_SETTINGS_KEY)
-    if (!raw) return defaultReaderSettings
+    if (!raw) return defaults
     const parsed = JSON.parse(raw) as Record<string, unknown>
     const rawTheme = parsed.theme as string | undefined
     // 认得的照收（表在 theme.ts）；更老的几个名字对到新的上
@@ -131,7 +142,7 @@ function loadReaderSettings(): ReaderSettings {
           ? 'rice'
           : defaultReaderSettings.theme
     return {
-      fontSize: typeof parsed.fontSize === 'number' ? Math.min(24, Math.max(12, parsed.fontSize)) : defaultReaderSettings.fontSize,
+      fontSize: typeof parsed.fontSize === 'number' ? Math.min(24, Math.max(12, parsed.fontSize)) : defaults.fontSize,
       fontFamily: (() => {
         const f = parsed.fontFamily as string | undefined
         if (f === 'sans' || f === 'serif' || f === 'rounded') return f
@@ -145,7 +156,7 @@ function loadReaderSettings(): ReaderSettings {
         : defaultReaderSettings.accent
     }
   } catch {
-    return defaultReaderSettings
+    return defaults
   }
 }
 
